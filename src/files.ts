@@ -56,6 +56,66 @@ export function fmtTime(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Trim-precision format: m:ss.d (keeps tenths so slider drags round-trip). */
+export function fmtTrim(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00";
+  const clamped = Math.max(0, sec);
+  const m = Math.floor(clamped / 60);
+  const s = clamped - m * 60;
+  if (Number.isInteger(Math.round(s * 10) / 10) && Number.isInteger(clamped)) {
+    return `${m}:${String(Math.round(s)).padStart(2, "0")}`;
+  }
+  return `${m}:${s.toFixed(1).padStart(4, "0")}`;
+}
+
+export function clamp(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v));
+}
+
+/**
+ * Downsampled waveform peaks (0..1) for a trim timeline.
+ * Returns null when undecodable (no audio track, too big, unsupported codec).
+ */
+export async function peakWaveform(file: File, buckets = 96): Promise<number[] | null> {
+  // Decoding a huge video into RAM can OOM the tab — timeline falls back to gradient.
+  if (file.size > 60 * 1024 * 1024) return null;
+  try {
+    const AC =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return null;
+    const buf = await file.arrayBuffer();
+    const ctx = new AC();
+    try {
+      const audio = await ctx.decodeAudioData(buf);
+      const ch = audio.getChannelData(0);
+      if (!ch || ch.length === 0) return null;
+      const out = new Array<number>(buckets).fill(0);
+      const step = Math.max(1, Math.floor(ch.length / buckets));
+      let max = 0;
+      for (let b = 0; b < buckets; b++) {
+        let peak = 0;
+        const start = b * step;
+        const end = Math.min(ch.length, start + step);
+        // Sample every Nth frame inside the bucket to stay fast on long files.
+        const stride = Math.max(1, Math.floor((end - start) / 32));
+        for (let i = start; i < end; i += stride) {
+          const v = Math.abs(ch[i] ?? 0);
+          if (v > peak) peak = v;
+        }
+        out[b] = peak;
+        if (peak > max) max = peak;
+      }
+      if (max <= 0) return null;
+      return out.map((v) => v / max);
+    } finally {
+      void ctx.close().catch(() => {});
+    }
+  } catch {
+    return null;
+  }
+}
+
 export function probeDuration(file: File): Promise<number | null> {
   const { promise, resolve } = Promise.withResolvers<number | null>();
   const url = URL.createObjectURL(file);
@@ -74,14 +134,42 @@ export function probeDuration(file: File): Promise<number | null> {
 }
 
 export function downloadUrl(data: Uint8Array, mime: string): string {
-  const blob = new Blob([data.buffer as ArrayBuffer], { type: mime });
+  // Use a copy: `data` may be a view into wasm memory with a larger
+  // backing buffer — `data.buffer` would leak extra bytes into the Blob.
+  const copy = data.slice();
+  const blob = new Blob([copy as unknown as BlobPart], { type: mime });
   return URL.createObjectURL(blob);
+}
+
+/** True when the Web Share API entry point exists at all. */
+export function canAttemptShare(): boolean {
+  try {
+    return (
+      typeof navigator !== "undefined" &&
+      typeof (navigator as Navigator & { share?: unknown }).share === "function"
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function shareFile(file: File): Promise<"shared" | "unsupported" | "dismissed"> {
   try {
-    if (!navigator.canShare?.({ files: [file] })) return "unsupported";
-    await navigator.share({ files: [file] });
+    const nav = navigator as Navigator & {
+      canShare?: (data: ShareData) => boolean;
+      share?: (data: ShareData) => Promise<void>;
+    };
+    if (typeof nav.share !== "function") return "unsupported";
+    // When canShare exists and explicitly rejects this payload, skip the
+    // share sheet and let the caller fall back (e.g. to download).
+    try {
+      if (typeof nav.canShare === "function" && !nav.canShare({ files: [file] })) {
+        return "unsupported";
+      }
+    } catch {
+      // canShare threw — fall through and try share() anyway.
+    }
+    await nav.share({ files: [file] });
     return "shared";
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") return "dismissed";

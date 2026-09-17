@@ -4,87 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f5f5f7" />
-    <meta name="description" content="MpBuddy — private in-browser media tools. Compress, trim, extract audio. Files never leave your device." />
-    <title>MpBuddy — media tools in your browser</title>
+    <meta name="description" content="MpBuddy — private in-browser media tools. Compress, trim, crop, extract audio. Files never leave your device." />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <title>mpbuddy - media tools in your browser</title>
+    <style>
+      html{background:#f5f5f7}
+      html,body{margin:0;padding:0}
+      body{background:#f5f5f7;color:#171717;font-family:"Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+      #root:empty{min-height:100dvh}
+    </style>
   </head>
   <body class="bg-[#f5f5f7] text-neutral-900 antialiased">
-    <div class="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-8 pt-4 sm:max-w-lg">
-      <header class="flex items-center justify-between px-1">
-        <div class="flex items-center gap-2">
-          <span class="grid size-7 place-items-center rounded-[9px] bg-neutral-900 text-[13px] font-bold text-white">M</span>
-          <span class="text-[13px] font-semibold tracking-tight text-neutral-900">MpBuddy</span>
-        </div>
-        <div id="engineBadge" class="flex items-center gap-1.5 rounded-full bg-black/[0.05] px-2.5 py-1 text-[11px] font-medium text-neutral-500">engine: idle</div>
-      </header>
-
-      <nav id="toolTabs" class="mt-4 grid grid-cols-4 gap-1 rounded-[20px] bg-black/[0.06] p-1" aria-label="Tools"></nav>
-
-      <div class="mt-5 px-1">
-        <h2 id="modeTitle" class="text-[22px] font-semibold leading-tight tracking-tight">Compress</h2>
-        <p id="modeDesc" class="mt-0.5 text-[13px] leading-snug text-neutral-500">Shrink video to H.264 MP4 for easy sharing.</p>
-      </div>
-
-      <main class="mt-4 flex flex-col gap-3">
-        <button id="dropzone" class="card-apple flex min-h-44 flex-col items-center justify-center gap-1.5 rounded-[22px] border-dashed px-6 py-8 text-center transition-colors">
-          <span class="grid size-11 place-items-center rounded-full bg-[#0071e3]/10 text-[#0071e3]">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" /><path d="M7 9l5 -5l5 5" /><path d="M12 4l0 12" /></svg>
-          </span>
-          <span id="dropLabel" class="mt-1 max-w-full truncate text-[15px] font-medium text-neutral-900">Tap to pick video / audio</span>
-          <span id="fileMeta" class="text-xs text-neutral-500"></span>
-          <span id="sizeWarn" class="hidden max-w-full text-xs font-medium text-amber-600"></span>
-          <span class="mt-1 text-[11px] text-neutral-400">MP4 · WebM · MP3 · ≤200 MB</span>
-        </button>
-        <input id="fileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,.3gp,.avi,.mpg,.mpeg" class="hidden" />
-
-        <section id="options" class="card-apple rounded-[22px] p-4"></section>
-
-        <button id="runBtn" disabled class="btn-apple-primary min-h-[52px] rounded-[16px] text-[16px] font-semibold">Run</button>
-
-        <section id="progressWrap" class="card-apple hidden rounded-[22px] p-4">
-          <div class="flex items-center justify-between text-[13px] text-neutral-500">
-            <span id="statusLine">waiting…</span>
-            <button id="cancelBtn" class="btn-apple-secondary rounded-full px-4 py-1.5 text-[13px] font-medium text-neutral-700">Cancel</button>
-          </div>
-          <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-black/[0.08]">
-            <div id="progressBar" class="h-full w-0 rounded-full bg-[#0071e3] transition-[width]"></div>
-          </div>
-          <img id="previewImg" alt="Converted GIF preview" class="mt-3 hidden max-h-64 w-full rounded-2xl bg-black object-contain" />
-        </section>
-
-        <section id="resultWrap" class="card-apple hidden rounded-[22px] p-4">
-          <p class="text-[13px] text-neutral-500">Done <span id="resultMeta" class="text-neutral-400"></span></p>
-          <video id="previewVideo" controls playsinline class="mt-3 hidden max-h-64 w-full rounded-2xl bg-black"></video>
-          <audio id="previewAudio" controls class="mt-3 hidden w-full"></audio>
-          <div class="mt-3 grid grid-cols-2 gap-2.5">
-            <a id="downloadBtn" download class="btn-apple-primary grid min-h-12 place-items-center rounded-[14px] text-[15px] font-semibold no-underline">Download</a>
-            <button id="shareBtn" class="btn-apple-secondary min-h-12 rounded-[14px] text-[15px] font-semibold text-neutral-800">Share</button>
-          </div>
-          <button id="resetBtn" class="mt-1 w-full py-2 text-[13px] font-medium text-[#0071e3]">Process another file</button>
-        </section>
-
-        <details class="card-apple rounded-[22px] p-4 text-[13px] leading-relaxed text-neutral-500">
-          <summary class="cursor-pointer font-medium text-neutral-700">Limits & privacy</summary>
-          <ul class="mt-2.5 list-disc space-y-1.5 pl-4">
-            <li>Everything runs locally via ffmpeg.wasm. No uploads, works offline after first load.</li>
-            <li>Best for clips &lt; 2 min, ≤1080p, &lt;200 MB desktop / &lt;50 MB mobile. Bigger files can crash mobile tabs.</li>
-            <li>First run downloads a ~30 MB engine once, then it's cached.</li>
-          </ul>
-        </details>
-      </main>
-
-      <footer class="mt-8 flex flex-col items-center gap-2 border-t border-black/[0.06] pt-5 text-center">
-        <a
-          href="https://x.com/tanavtwt"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn-apple-secondary flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium text-neutral-600"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" class="size-3.5 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
-          <span>@tanavtwt</span>
-        </a>
-        <p class="text-[11px] text-neutral-400">Files never leave this device · Built in the open</p>
-      </footer>
-    </div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

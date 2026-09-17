@@ -1,6 +1,6 @@
 import { baseName, parseTime } from "./files";
 
-export type ToolId = "compress" | "trim" | "mp3" | "convert";
+export type ToolId = "compress" | "trim" | "mp3" | "convert" | "crop";
 
 export interface ToolDef {
   id: ToolId;
@@ -27,6 +27,57 @@ function scaleFilter(maxH: string): string[] {
   if (!Number.isFinite(h)) return [];
   // Downscale only — never upscale a small clip.
   return ["-vf", `scale=-2:'min(${h}\\,ih)'`];
+}
+
+/** Crop-to-ratio presets. Value is "W:H" (ffmpeg-evaluated) or "custom". */
+export const CROP_RATIOS: [string, string][] = [
+  ["9:16", "Shorts · 9:16"],
+  ["1:1", "Square · 1:1"],
+  ["3:4", "Portrait · 3:4"],
+  ["16:9", "Video · 16:9"],
+  ["143:100", "IMAX · 1.43:1"],
+  ["custom", "Custom…"],
+];
+
+const CROP_SLUG: Record<string, string> = {
+  "9:16": "9x16",
+  "1:1": "1x1",
+  "3:4": "3x4",
+  "16:9": "16x9",
+  "143:100": "imax",
+};
+
+/** Resolve target W:H from crop opts. Null when custom is invalid. */
+export function cropWH(o: Record<string, string>): { W: number; H: number } | null {
+  if (o.ratio === "custom") {
+    const W = Number(o.customW);
+    const H = Number(o.customH);
+    if (!Number.isFinite(W) || !Number.isFinite(H) || W <= 0 || H <= 0) return null;
+    return { W, H };
+  }
+  const parts = String(o.ratio ?? "9:16").split(":");
+  const W = Number(parts[0]);
+  const H = Number(parts[1]);
+  if (!Number.isFinite(W) || !Number.isFinite(H) || W <= 0 || H <= 0) return null;
+  return { W, H };
+}
+
+export function cropSlug(o: Record<string, string>): string {
+  if (o.ratio === "custom") {
+    const wh = cropWH(o);
+    if (!wh) return "custom";
+    const fmt = (n: number): string => (Number.isInteger(n) ? String(n) : String(n).replace(".", "p"));
+    return `${fmt(wh.W)}x${fmt(wh.H)}`;
+  }
+  return CROP_SLUG[o.ratio ?? "9:16"] ?? "crop";
+}
+
+/** Center-crop to an aspect ratio without stretching. Even dims for H.264. */
+export function cropFilter(W: number, H: number): string {
+  return (
+    `crop='floor(min(iw,ih*${W}/${H})/2)*2':'floor(min(ih,iw*${H}/${W})/2)*2'` +
+    `,setsar=1`
+  );
 }
 
 export const TOOLS: ToolDef[] = [
@@ -115,6 +166,30 @@ export const TOOLS: ToolDef[] = [
         "-i", input, ...(vf.length ? ["-vf", vf.join(",")] : []),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output,
+      ];
+    },
+  },
+  {
+    id: "crop",
+    label: "Crop",
+    icon: '<path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M18 22v-14a2 2 0 0 0 -2 -2h-14" />',
+    hint: "Center-crop to Shorts, Square, IMAX & more — no stretch.",
+    accept: "video/*,.mp4,.m4v,.mov,.mkv,.webm,.3gp,.avi,.mpg,.mpeg",
+    outMime: () => "video/mp4",
+    outName: (n, o) => `${baseName(n)}-${cropSlug(o)}.mp4`,
+    validate: (o) => {
+      if (o.ratio === "custom" && !cropWH(o)) return "Enter a custom W and H greater than 0.";
+      return null;
+    },
+    buildArgs: (input, output, o) => {
+      const wh = cropWH(o) ?? { W: 9, H: 16 };
+      return [
+        "-i", input,
+        "-vf", cropFilter(wh.W, wh.H),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        output,
       ];
     },
   },
