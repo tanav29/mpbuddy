@@ -19,6 +19,7 @@ import {
   runFFmpeg,
 } from "./ffmpeg";
 import { Field, Select, TextInput } from "./components/fields";
+import PwaStatus from "./components/PwaStatus";
 import TrimEditor, { type PickedKind } from "./components/TrimEditor";
 
 type Opts = Record<ToolId, Record<string, string>>;
@@ -712,6 +713,7 @@ export default function App() {
           Files never leave this device · Built in the open
         </p>
       </footer>
+      <PwaStatus />
     </div>
   );
 }

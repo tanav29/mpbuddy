@@ -54,28 +54,52 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      includeAssets: ["favicon.ico", "apple-touch-icon.png", "icon.svg"],
       manifest: {
-        name: "MpBuddy",
+        name: "MpBuddy — media tools in your browser",
         short_name: "MpBuddy",
-        description: "Private in-browser media tools. Files never leave your device.",
-        theme_color: "#09090b",
-        background_color: "#09090b",
+        description:
+          "Private in-browser media tools. Compress, trim, crop, extract audio. Files never leave your device.",
+        id: "/",
+        start_url: "/",
+        scope: "/",
         display: "standalone",
-        start_url: ".",
+        display_override: ["window-controls-overlay", "standalone"],
+        orientation: "any",
+        theme_color: "#f5f5f7",
+        background_color: "#f5f5f7",
+        categories: ["utilities", "photo", "video"],
+        lang: "en",
+        dir: "ltr",
         icons: [
+          { src: "pwa-192x192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "pwa-512x512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          {
+            src: "maskable-icon-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
           { src: "icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
         ],
       },
       workbox: {
-        // WASM (~32MB each) must NOT precache — fetched lazily, then runtime-cached.
-        // woff2 included so the bundled Inter font works offline.
-        globPatterns: ["**/*.{js,css,html,svg,woff2}"],
+        // App shell precached (JS/HTML/fonts/icons). CSS is inlined into
+        // index.html by firstPaint(), so there is no .css file to precache.
+        // WASM (~32MB each) must NOT precache — fetched lazily on first run,
+        // then runtime-cached so the engine works offline afterwards.
+        globPatterns: ["**/*.{js,html,svg,png,ico,woff2,webmanifest}"],
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>
-              url.pathname.endsWith(".wasm") || url.pathname.endsWith("ffmpeg-core.js"),
+              url.pathname.endsWith(".wasm") || url.pathname.includes("ffmpeg-core"),
             handler: "CacheFirst",
-            options: { cacheName: "ffmpeg-core", expiration: { maxEntries: 6 } },
+            options: {
+              cacheName: "ffmpeg-core",
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 6, maxAgeSeconds: 30 * 24 * 3600 },
+            },
           },
         ],
       },
