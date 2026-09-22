@@ -8,6 +8,10 @@
 
 :root {
   color-scheme: light;
+  --bg: #f5f5f7;
+  --fg: #171717;
+  --card: rgb(255 255 255 / 0.92);
+  --card-border: rgb(0 0 0 / 0.06);
 }
 
 html,
@@ -20,6 +24,8 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-feature-settings: "cv11", "ss01";
+  background: var(--bg);
+  color: var(--fg);
 }
 
 input,
@@ -42,11 +48,25 @@ select:focus-visible {
 
 /* Apple-style frosted card */
 .card-apple {
-  background: rgb(255 255 255 / 0.92);
-  border: 1px solid rgb(0 0 0 / 0.06);
+  background: var(--card);
+  border: 1px solid var(--card-border);
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.04),
     0 12px 32px -16px rgb(0 0 0 / 0.14);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --fg: #f2f4f8;
+  --card: rgb(24 28 34 / 0.92);
+  --card-border: rgb(255 255 255 / 0.12);
+}
+
+:root[data-theme="dark"] .btn-apple-secondary {
+  background: linear-gradient(180deg, #242934 0%, #1b202a 100%);
+  border-color: rgb(255 255 255 / 0.12);
+  color: #e7ebf3;
 }
 
 #dropzone {

@@ -1,6 +1,6 @@
 import { baseName, parseTime } from "./files";
 
-export type ToolId = "compress" | "trim" | "mp3" | "convert" | "crop";
+export type ToolId = "compress" | "trim" | "mp3" | "convert" | "crop" | "thumbnail";
 
 export interface ToolDef {
   id: ToolId;
@@ -20,6 +20,22 @@ const IN = "in_src";
 const OUT = "out_file";
 
 const CRF: Record<string, string> = { high: "23", med: "28", low: "33" };
+
+function num(v: string | undefined, fallback: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function targetVideoKbps(o: Record<string, string>, audioKbps: number): string | null {
+  const target = o.targetMB ?? "off";
+  if (target === "off") return null;
+  const mb = Number(target);
+  const duration = num(o.durationSec, 0);
+  if (!Number.isFinite(mb) || mb <= 0 || duration <= 0.1) return null;
+  const totalKbps = ((mb * 8192) / duration) * 0.95;
+  const videoKbps = Math.max(180, Math.floor(totalKbps - audioKbps));
+  return `${videoKbps}k`;
+}
 
 function scaleFilter(maxH: string): string[] {
   if (maxH === "orig") return [];
@@ -73,9 +89,11 @@ export function cropSlug(o: Record<string, string>): string {
 }
 
 /** Center-crop to an aspect ratio without stretching. Even dims for H.264. */
-export function cropFilter(W: number, H: number): string {
+export function cropFilter(W: number, H: number, fx = 0.5, fy = 0.5): string {
+  const x = Math.max(0, Math.min(1, fx));
+  const y = Math.max(0, Math.min(1, fy));
   return (
-    `crop='floor(min(iw,ih*${W}/${H})/2)*2':'floor(min(ih,iw*${H}/${W})/2)*2'` +
+    `crop='floor(min(iw,ih*${W}/${H})/2)*2':'floor(min(ih,iw*${H}/${W})/2)*2':'(iw-ow)*${x}':'(ih-oh)*${y}'` +
     `,setsar=1`
   );
 }
@@ -102,7 +120,7 @@ export const TOOLS: ToolDef[] = [
     id: "trim",
     label: "Trim",
     icon: '<path d="M3 7a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M3 17a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M8.6 8.6l10.4 10.4" /><path d="M8.6 15.4l10.4 -10.4" />',
-    hint: "Cut a section instantly — no re-encode.",
+    hint: "Cut a section instantly, or switch to exact mode.",
     accept: "video/*,audio/*,.mp4,.m4v,.mov,.mkv,.webm,.3gp,.mp3,.m4a,.wav,.ogg,.oga,.aac,.flac",
     outMime: () => "video/mp4",
     outName: (n) => `${baseName(n)}-trimmed.mp4`,
@@ -116,12 +134,22 @@ export const TOOLS: ToolDef[] = [
     buildArgs: (input, output, o) => {
       const s = parseTime(o.start ?? "");
       const e = parseTime(o.end ?? "");
+      const exact = o.exact === "on";
       const args: string[] = [];
-      if (s != null) args.push("-ss", String(s));
+      if (!exact && s != null) args.push("-ss", String(s));
       args.push("-i", input);
-      if (s != null && e != null) args.push("-to", String(e - s));
+      if (exact && s != null) args.push("-ss", String(s));
+      if (s != null && e != null) args.push("-t", String(e - s));
       else if (e != null) args.push("-to", String(e));
-      args.push("-c", "copy", "-movflags", "+faststart", output);
+      if (exact) {
+        args.push(
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+          "-c:a", "aac", "-b:a", "128k",
+          "-movflags", "+faststart", output,
+        );
+      } else {
+        args.push("-c", "copy", "-movflags", "+faststart", output);
+      }
       return args;
     },
   },
@@ -141,7 +169,7 @@ export const TOOLS: ToolDef[] = [
     id: "convert",
     label: "Convert",
     icon: '<path d="M4 12v-3a3 3 0 0 1 3 -3h13m-3 -3l3 3l-3 3" /><path d="M20 12v3a3 3 0 0 1 -3 3h-13m3 3l-3 -3l3 -3" />',
-    hint: "MP4, WebM, MP3 or GIF — plus vertical 9:16.",
+    hint: "MP4, WebM, MP3 or GIF — plus vertical 9:16 and target size.",
     accept: "video/*,audio/*,.mp4,.m4v,.mov,.mkv,.webm,.3gp,.avi,.mpg,.mpeg,.mp3,.m4a,.wav,.ogg,.oga,.aac,.flac",
     outMime: (o) =>
       o.format === "mp3" ? "audio/mpeg" : o.format === "gif" ? "image/gif" : o.format === "webm" ? "video/webm" : "video/mp4",
@@ -161,11 +189,18 @@ export const TOOLS: ToolDef[] = [
         vf.push("scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1");
       else if (o.shorts === "crop") vf.push("crop=ih*9/16:ih,scale=1080:1920,setsar=1");
       if (fmt === "webm")
-        return ["-i", input, ...(vf.length ? ["-vf", vf.join(",")] : []), "-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-c:a", "libopus", output];
+        return [
+          "-i", input, ...(vf.length ? ["-vf", vf.join(",")] : []),
+          "-c:v", "libvpx-vp9", ...(targetVideoKbps(o, 96) ? ["-b:v", targetVideoKbps(o, 96)!] : ["-crf", "30", "-b:v", "0"]),
+          ...(o.audio === "mute" ? ["-an"] : ["-c:a", "libopus"]),
+          output,
+        ];
       return [
         "-i", input, ...(vf.length ? ["-vf", vf.join(",")] : []),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output,
+        "-c:v", "libx264", "-preset", "veryfast",
+        ...(targetVideoKbps(o, 128) ? ["-b:v", targetVideoKbps(o, 128)!] : ["-crf", "23"]),
+        ...(o.audio === "mute" ? ["-an"] : ["-c:a", "aac", "-b:a", "128k"]),
+        "-movflags", "+faststart", output,
       ];
     },
   },
@@ -183,15 +218,33 @@ export const TOOLS: ToolDef[] = [
     },
     buildArgs: (input, output, o) => {
       const wh = cropWH(o) ?? { W: 9, H: 16 };
+      const fx = num(o.focalX, 50) / 100;
+      const fy = num(o.focalY, 50) / 100;
       return [
         "-i", input,
-        "-vf", cropFilter(wh.W, wh.H),
+        "-vf", cropFilter(wh.W, wh.H, fx, fy),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
         output,
       ];
     },
+  },
+  {
+    id: "thumbnail",
+    label: "Thumbnail",
+    icon: '<path d="M5 4m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z" /><path d="M10 9l5 3l-5 3z" />',
+    hint: "Export a frame as JPG for thumbnails and covers.",
+    accept: "video/*,.mp4,.m4v,.mov,.mkv,.webm,.3gp,.avi,.mpg,.mpeg",
+    outMime: () => "image/jpeg",
+    outName: (n) => `${baseName(n)}-thumb.jpg`,
+    buildArgs: (input, output, o) => [
+      "-ss", String(parseTime(o.frameAt ?? "") ?? 0),
+      "-i", input,
+      "-frames:v", "1",
+      "-q:v", "2",
+      output,
+    ],
   },
 ];
 
