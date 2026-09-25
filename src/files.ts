@@ -72,6 +72,93 @@ export function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
+/** A half-open span of the timeline, in seconds. */
+export interface Range {
+  a: number;
+  b: number;
+}
+
+/** Shortest span a cut may cover — smaller marks are treated as a stray tap. */
+export const MIN_CUT = 0.1;
+
+const CUT_EPS = 1e-6;
+
+/**
+ * Packed range list: "0:12.5-0:18|0:30-0:31.5".
+ * Unparseable pieces are dropped, flipped ends are swapped.
+ */
+export function parseRanges(s: string): Range[] {
+  const out: Range[] = [];
+  for (const chunk of s.split("|")) {
+    const dash = chunk.indexOf("-");
+    if (dash < 0) continue;
+    const a = parseTime(chunk.slice(0, dash));
+    const b = parseTime(chunk.slice(dash + 1));
+    if (a == null || b == null) continue;
+    out.push(a <= b ? { a, b } : { a: b, b: a });
+  }
+  return out;
+}
+
+/** Inverse of parseRanges. */
+export function fmtRanges(rs: Range[]): string {
+  return rs.map((r) => `${fmtTrim(r.a)}-${fmtTrim(r.b)}`).join("|");
+}
+
+/**
+ * Drop slivers and fuse overlaps, keeping the order the ranges were added in —
+ * reordering mid-edit would shuffle the inputs out from under the user.
+ * (The ffmpeg graph sorts for itself; see trimCuts.)
+ */
+export function mergeRanges(rs: Range[], minLen = MIN_CUT): Range[] {
+  const out: Range[] = [];
+  for (const r of rs) {
+    if (!Number.isFinite(r.a) || !Number.isFinite(r.b) || r.b - r.a < minLen) continue;
+    const hits: number[] = [];
+    for (let i = 0; i < out.length; i++) {
+      const o = out[i]!;
+      if (r.a < o.b - CUT_EPS && o.a < r.b - CUT_EPS) hits.push(i);
+    }
+    if (hits.length === 0) {
+      out.push({ a: r.a, b: r.b });
+      continue;
+    }
+    const a = Math.min(r.a, ...hits.map((i) => out[i]!.a));
+    const b = Math.max(r.b, ...hits.map((i) => out[i]!.b));
+    const at = Math.min(...hits);
+    for (let i = hits[hits.length - 1]!; i >= at; i--) out.splice(i, 1);
+    out.splice(at, 0, { a, b });
+  }
+  return out;
+}
+
+/** Keep ranges inside [0, dur]; dur null leaves the top open. */
+export function clampRanges(rs: Range[], dur: number | null): Range[] {
+  const hi = dur != null && Number.isFinite(dur) ? dur : Number.POSITIVE_INFINITY;
+  return rs
+    .map((r) => ({ a: clamp(r.a, 0, hi), b: clamp(r.b, 0, hi) }))
+    .filter((r) => r.b - r.a >= MIN_CUT);
+}
+
+/**
+ * What survives the cuts: every span of [0, dur] no cut touches, in order.
+ * `b: null` means "to the end of the file" (duration unknown).
+ */
+export function keptSegments(
+  cuts: Range[],
+  dur: number | null,
+): { a: number; b: number | null }[] {
+  const out: { a: number; b: number | null }[] = [];
+  let cursor = 0;
+  for (const c of cuts) {
+    if (c.a - cursor >= MIN_CUT) out.push({ a: cursor, b: c.a });
+    cursor = Math.max(cursor, c.b);
+  }
+  if (dur == null) out.push({ a: cursor, b: null });
+  else if (dur - cursor >= MIN_CUT) out.push({ a: cursor, b: dur });
+  return out;
+}
+
 /**
  * Downsampled waveform peaks (0..1) for a trim timeline.
  * Returns null when undecodable (no audio track, too big, unsupported codec).

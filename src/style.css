@@ -4,9 +4,14 @@
 @theme {
   --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system,
     BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* One accent for the whole app: every other surface is neutral, so blue
+     always reads as "this is the action". */
+  --color-accent: #0071e3;
 }
 
 :root {
+  /* Light is the only theme. Saying so stops iOS auto-darkening the page when
+     the phone itself is in dark mode. */
   color-scheme: light;
   --bg: #f5f5f7;
   --fg: #171717;
@@ -41,44 +46,31 @@ button:focus-visible,
 a:focus-visible,
 summary:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+[role="radio"]:focus-visible,
+[role="switch"]:focus-visible {
   outline: 2px solid rgb(0 113 227 / 0.6);
   outline-offset: 2px;
 }
 
-/* Apple-style frosted card */
-.card-apple {
-  background: var(--card);
+/* Cards carry the border and the lift only, so each call site picks its own
+   surface (plain, warning, success) without fighting the class. */
+.card {
   border: 1px solid var(--card-border);
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.04),
     0 12px 32px -16px rgb(0 0 0 / 0.14);
 }
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #0b0d10;
-  --fg: #f2f4f8;
-  --card: rgb(24 28 34 / 0.92);
-  --card-border: rgb(255 255 255 / 0.12);
+.card-tint {
+  background: var(--card);
 }
-
-:root[data-theme="dark"] .btn-apple-secondary {
-  background: linear-gradient(180deg, #242934 0%, #1b202a 100%);
-  border-color: rgb(255 255 255 / 0.12);
-  color: #e7ebf3;
+.card-warn {
+  background: #fff8ec;
+  border-color: #f2dcb2;
 }
-
-#dropzone {
-  border-width: 1.5px;
-  border-color: rgb(0 0 0 / 0.12);
-}
-#dropzone:hover {
-  border-color: rgb(0 113 227 / 0.45);
-  background: rgb(255 255 255);
-}
-#dropzone:active {
-  border-color: rgb(0 113 227 / 0.7);
+.card-good {
+  background: #f1fbf5;
+  border-color: #bde5cb;
 }
 
 /* 3D embossed primary (iOS blue push button) */
@@ -144,4 +136,15 @@ select:focus-visible {
 .trim-handle:focus-visible {
   outline: 2px solid rgb(0 113 227 / 0.7);
   outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
