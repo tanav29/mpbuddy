@@ -200,6 +200,35 @@ function explainFailure(msg: string): Failure {
   return { title: "Couldn't finish that", hint: "Try again, or try a different file.", detail: msg };
 }
 
+/**
+ * Limits, stripped of container boxes per the house style: items separated by
+ * hairlines only, with a sharp + / − toggle.
+ */
+function LimitsNote() {
+  return (
+    <details className="group border-t border-[#eaeaea] pt-4">
+      <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-semibold text-[#111] [&::-webkit-details-marker]:hidden">
+        <span>Limits &amp; privacy</span>
+        <span aria-hidden="true" className="font-mono text-[16px] font-normal text-[#a3a099] group-open:hidden">
+          +
+        </span>
+        <span aria-hidden="true" className="hidden font-mono text-[16px] font-normal text-[#a3a099] group-open:inline">
+          −
+        </span>
+      </summary>
+      <ul className="mt-1 divide-y divide-[#eaeaea] text-[14px] leading-relaxed text-[#55534e]">
+        <li className="py-2.5">
+          Everything runs locally via ffmpeg.wasm. No uploads, works offline after first load.
+        </li>
+        <li className="py-2.5">
+          Best for clips under 2 min, 1080p or less, and files under 200 MB.
+        </li>
+        <li className="py-2.5">First run downloads a ~30 MB engine once, then it&apos;s cached.</li>
+      </ul>
+    </details>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<View>(readHash);
   const [opts, setOpts] = useState<Opts>(loadOpts);
@@ -692,7 +721,7 @@ export default function App() {
     if (!resultFile) return;
     const r = await shareFile(resultFile);
     if (r === "shared") {
-      setShareLabel("Shared ✓");
+      setShareLabel("Shared");
       setTimeout(() => setShareLabel("Share"), 2000);
     } else if (r === "unsupported") {
       // No share sheet for this file — hand them the download instead.
@@ -779,6 +808,7 @@ export default function App() {
     return "same";
   })();
   const gifTooLong = activeTool === "convert" && opts.convert!.format === "gif" && (pickedDuration ?? 0) > GIF_MAX_SEC;
+  const wantsImage = tool.acceptKind === "image";
 
   /** Compress (video or image) gets a Squoosh-style before/after slider. */
   const compressCompare =
@@ -786,103 +816,132 @@ export default function App() {
     (activeTool === "image" && opts.image!.op === "compress");
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-2 pt-4 sm:max-w-lg">
-      <header className="flex items-start justify-between gap-3 px-1">
-        {view.name === "tool" ? (
-          // On a tool page the way out matters more than the brand mark.
-          <button
-            type="button"
-            onClick={() => go({ name: "home" })}
-            className="btn-apple-secondary -ml-1.5 flex min-h-10 shrink-0 items-center gap-1.5 rounded-full py-2 pl-2.5 pr-3.5 text-[13.5px] font-semibold tracking-tight text-neutral-800"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              className="size-4"
-            >
-              <path d="M15 6l-6 6l6 6" />
-            </svg>
-            All tools
-          </button>
-        ) : (
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span
-              aria-hidden="true"
-              className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-[#2f8bff] to-[#0058c7] text-white shadow-[0_8px_16px_-6px_rgb(0_113_227/0.55)]"
+    <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col px-5 pb-6 sm:px-8 lg:px-10">
+      <header className="sticky top-0 z-40 -mx-5 border-b border-[#eaeaea] bg-[#f7f6f3]/85 px-5 backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4">
+          {view.name === "tool" ? (
+            // On a tool page the way out matters more than the brand mark.
+            <button
+              type="button"
+              onClick={() => go({ name: "home" })}
+              className="btn-secondary flex min-h-11 shrink-0 items-center gap-1.5 px-3 text-[14px] font-semibold"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2"
+                strokeWidth="2.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="size-[18px]"
+                aria-hidden="true"
+                className="size-4"
               >
-                <path d="M6 4l14 8-14 8V4z" />
+                <path d="M15 6l-6 6l6 6" />
               </svg>
-            </span>
-            <div className="min-w-0">
-              <h1 className="text-[19px] font-semibold leading-none tracking-tight">MpBuddy</h1>
-              <p className="mt-1 text-[11.5px] leading-snug text-neutral-500">
-                Everything runs on your device.
-              </p>
+              All tools
+            </button>
+          ) : (
+            <div className="flex min-w-0 items-baseline gap-3">
+              <span className="font-serif text-[22px] font-semibold tracking-[-0.02em] text-[#111]">
+                MpBuddy
+              </span>
+              <span className="hidden font-mono text-[11px] uppercase tracking-[0.08em] text-[#a3a099] sm:inline">
+                Local media tools
+              </span>
             </div>
-          </div>
-        )}
-        {engineNote && engineVisible && (
-          <p
-            role="status"
-            className="mt-0.5 flex shrink-0 items-center gap-1.5 self-center rounded-full bg-black/[0.05] px-2.5 py-1 text-[11px] font-medium text-neutral-600"
-          >
-            <span
+          )}
+          {engineNote && engineVisible && (
+            <p
+              role="status"
               className={
-                "size-1.5 rounded-full " + (engineNote.busy ? "animate-pulse bg-amber-500" : "bg-emerald-500")
+                "flex shrink-0 items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.06em] " +
+                (engineNote.busy
+                  ? "border-[#ebd9a8] bg-[#fbf3db] text-[#956400]"
+                  : "border-[#cbe3cf] bg-[#edf3ec] text-[#346538]")
               }
-            />
-            {engineNote.text}
-          </p>
-        )}
+            >
+              <span
+                className={
+                  "size-1.5 rounded-full " +
+                  (engineNote.busy ? "animate-pulse bg-[#956400]" : "bg-[#346538]")
+                }
+              />
+              {engineNote.text}
+            </p>
+          )}
+        </div>
       </header>
 
       {view.name === "home" ? (
-        <main className="mt-5 flex flex-col gap-4 pb-6">
+        <main className="mt-10 flex flex-col gap-10 pb-8">
+          <div className="max-w-2xl">
+            <p className="section-label">Private · on-device · offline-capable</p>
+            <h1 className="mt-3 font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.02em] text-[#111] sm:text-[48px]">
+              Media tools that never upload.
+            </h1>
+            <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-[#55534e]">
+              Compress, trim, convert and crop with ffmpeg running in this tab. Pick a tool to
+              start — your files stay on this machine.
+            </p>
+          </div>
           <ToolPicker onOpen={handleSelectTool} />
-          <RecentJobs
-            jobs={jobHistory}
-            onReuse={rerunFromHistory}
-            onClear={clearHistory}
-          />
-          <details className="card card-tint rounded-[22px] p-3 text-[13px] leading-relaxed text-neutral-500">
-            <summary className="cursor-pointer font-medium text-neutral-700">
-              Limits &amp; privacy
-            </summary>
-            <ul className="mt-2.5 list-disc space-y-1.5 pl-4">
-              <li>
-                Everything runs locally via ffmpeg.wasm. No uploads, works offline after first
-                load.
-              </li>
-              <li>
-                Best for clips &lt; 2 min, ≤1080p, &lt;200 MB desktop / &lt;50 MB mobile. Bigger
-                files can crash mobile tabs.
-              </li>
-              <li>First run downloads a ~30 MB engine once, then it&apos;s cached.</li>
-            </ul>
-          </details>
+          <div className="grid items-start gap-8 lg:grid-cols-2">
+            <RecentJobs
+              jobs={jobHistory}
+              onReuse={rerunFromHistory}
+              onClear={clearHistory}
+            />
+            <LimitsNote />
+          </div>
         </main>
       ) : (
         <>
-          <div className="mt-5 flex items-start gap-3 px-1">
+          <main className="mt-8 grid items-start gap-6 pb-8 lg:grid-cols-[240px_minmax(0,1fr)_360px]" aria-busy={running}>
+          <nav aria-label="Tools" className="hidden lg:block">
+            <div className="sticky top-20">
+              <p className="section-label px-2">Tools</p>
+              <ul className="mt-2 space-y-0.5">
+                {TOOLS.map((t) => {
+                  const current = t.id === activeTool;
+                  return (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        aria-current={current ? "page" : undefined}
+                        onClick={() => handleSelectTool(t.id)}
+                        className={
+                          "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-[14px] font-medium transition-colors " +
+                          (current
+                            ? "border-[#111] bg-[#111] text-white"
+                            : "border-transparent text-[#55534e] hover:border-[#e5e4e0] hover:bg-white hover:text-[#111]")
+                        }
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                          className="size-4 shrink-0"
+                          dangerouslySetInnerHTML={{ __html: t.icon }}
+                        />
+                        <span className="min-w-0 flex-1 truncate">{t.label}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </nav>
+          <div className="min-w-0 space-y-4">
+          <div className="flex items-start gap-3.5">
             <span
               aria-hidden="true"
-              className="grid size-12 shrink-0 place-items-center rounded-[15px] bg-accent/10 text-accent"
+              className="grid size-11 shrink-0 place-items-center rounded-lg bg-[#111] text-white"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -892,24 +951,22 @@ export default function App() {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="size-6"
+                className="size-5"
                 dangerouslySetInnerHTML={{ __html: tool.icon }}
               />
             </span>
             <div className="min-w-0 pt-0.5">
-              <h1 className="text-[24px] font-semibold leading-tight tracking-tight">
+              <h1 className="font-serif text-[30px] font-medium leading-[1.15] tracking-[-0.02em] text-[#111]">
                 {tool.label}
               </h1>
-              <p className="mt-0.5 text-[13px] leading-snug text-neutral-500">{tool.hint}</p>
+              <p className="mt-1 text-[14px] leading-snug text-[#787774]">{tool.hint}</p>
             </div>
           </div>
-
-          <main className="mt-4 flex flex-col gap-2.5 pb-28" aria-busy={running}>
         {picked ? (
-          <div className="card card-tint flex items-center gap-3 rounded-[22px] p-3">
+          <div className="panel flex items-center gap-3 p-5">
             <span
               aria-hidden="true"
-              className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-accent/10 text-accent"
+              className="grid size-10 shrink-0 place-items-center rounded-md bg-[#f1f0ed] text-[#111]"
             >
               {pickedKind === "audio" ? (
                 <svg
@@ -925,6 +982,21 @@ export default function App() {
                   <path d="M9 18V5l12-2v13" />
                   <circle cx="6" cy="18" r="3" />
                   <circle cx="18" cy="16" r="3" />
+                </svg>
+              ) : pickedKind === "image" ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-5"
+                >
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <circle cx="9" cy="10" r="1.5" />
+                  <path d="M4 18l5-5 3 3 4-4 4 4" />
                 </svg>
               ) : (
                 <svg
@@ -943,12 +1015,12 @@ export default function App() {
               )}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block max-w-full truncate text-[14px] font-semibold tracking-tight">
+              <span className="block max-w-full truncate text-[15px] font-semibold tracking-[-0.01em] text-[#111]">
                 {picked.name}
               </span>
-              <span className="mt-0.5 block text-xs tabular-nums text-neutral-500">{fileMeta}</span>
+              <span className="mt-0.5 block font-mono text-[12px] tabular-nums text-[#787774]">{fileMeta}</span>
               {sizeWarn && (
-                <span className="mt-1 block max-w-full text-xs font-medium text-amber-600">
+                <span className="mt-1 block max-w-full text-xs font-medium text-[#956400]">
                   {sizeWarn}
                 </span>
               )}
@@ -956,7 +1028,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="btn-apple-secondary shrink-0 rounded-full px-3.5 py-2 text-[13px] font-medium text-neutral-700"
+              className="btn-secondary shrink-0 px-3.5 py-2 text-[14px] font-medium"
             >
               Replace
             </button>
@@ -964,7 +1036,7 @@ export default function App() {
               type="button"
               onClick={handleRemoveFile}
               aria-label="Remove file"
-              className="grid size-9 shrink-0 place-items-center rounded-full text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-600"
+              className="grid size-9 shrink-0 place-items-center rounded-md text-[#a3a099] transition-colors hover:bg-[#fdebec] hover:text-[#9f2f2d]"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -984,20 +1056,20 @@ export default function App() {
         ) : (
           <>
             {rejected && (
-              <p className="rounded-[14px] bg-amber-100 px-3 py-2 text-[12px] font-medium text-amber-800">
+              <p className="rounded-lg border border-[#ebd9a8] bg-[#fbf3db] px-3.5 py-2.5 text-[13px] font-medium text-[#956400]">
                 {rejected.name}: {rejected.message}
               </p>
             )}
             <button
               type="button"
-              className="group flex min-h-40 flex-col items-center justify-center gap-2 rounded-[22px] border border-dashed border-black/15 bg-white/60 px-6 py-6 text-center transition-colors hover:border-accent/50 hover:bg-white"
+              className="group flex min-h-56 w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#d8d7d2] bg-white px-6 py-8 text-center transition-colors hover:border-[#111]"
               onClick={() => fileInputRef.current?.click()}
             >
-              <span className="grid size-12 place-items-center rounded-full bg-accent/10 text-accent transition-transform group-hover:scale-105">
+              <span className="grid size-11 place-items-center rounded-lg bg-[#f1f0ed] text-[#111]">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  width="22"
-                  height="22"
+                  width="20"
+                  height="20"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -1011,12 +1083,12 @@ export default function App() {
                   <path d="M20 16v2a2 2 0 0 1 -2 2H6a2 2 0 0 1 -2 -2v-2" />
                 </svg>
               </span>
-              <span className="mt-1 text-[15px] font-semibold tracking-tight">
-                Drop a video or audio file
+              <span className="mt-1.5 text-[16px] font-semibold tracking-[-0.01em] text-[#111]">
+                Drop {wantsImage ? "an image" : "a video or audio file"}
               </span>
-              <span className="text-[13px] text-neutral-500">or tap to browse</span>
-              <span className="mt-1 text-[11px] text-neutral-400">
-                MP4 · MOV · WebM · MP3 · WAV · up to 200 MB
+              <span className="text-[14px] text-[#787774]">or click to browse — paste works too</span>
+              <span className="mt-1 font-mono text-[12px] uppercase tracking-[0.06em] text-[#a3a099]">
+                {wantsImage ? "PNG · JPG · WebP" : "MP4 · MOV · WebM · MP3 · WAV · 200 MB"}
               </span>
             </button>
           </>
@@ -1034,7 +1106,7 @@ export default function App() {
         />
 
         {batchQueue.length > 0 && (
-          <div className="rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[12px] text-neutral-700">
+          <div className="rounded-lg border border-[#c4dff2] bg-[#e1f3fe] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#1f6c9f]">
             <div className="flex items-center gap-2">
               <span className="min-w-0 flex-1">
                 <span className="font-semibold">
@@ -1047,7 +1119,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setBatchQueue([])}
-                className="shrink-0 text-[12px] font-semibold text-accent"
+                className="shrink-0 text-[13px] font-semibold underline underline-offset-2"
               >
                 Clear
               </button>
@@ -1055,33 +1127,33 @@ export default function App() {
             <ul className="mt-1.5 space-y-1">
               {batchQueue.slice(0, 5).map((f, i) => (
                 <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-neutral-600">
+                  <span className="min-w-0 truncate tabular-nums">
                     {i + 2}. {f.name} · {formatBytes(f.size)}
                   </span>
                   <button
                     type="button"
                     aria-label={`Remove ${f.name}`}
                     onClick={() => setBatchQueue((prev) => prev.filter((_, j) => j !== i))}
-                    className="shrink-0 text-neutral-400 hover:text-red-600"
+                    className="shrink-0 opacity-70 hover:opacity-100"
                   >
-                    ✕
+                    ×
                   </button>
                 </li>
               ))}
               {batchQueue.length > 5 && (
-                <li className="text-neutral-400">and {batchQueue.length - 5} more…</li>
+                <li className="opacity-70">and {batchQueue.length - 5} more…</li>
               )}
             </ul>
           </div>
         )}
         {activeTool === "merge" && batchQueue.length === 0 && picked && (
-          <p className="rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[12px] leading-snug text-neutral-700">
+          <p className="rounded-lg border border-[#c4dff2] bg-[#e1f3fe] px-3.5 py-2.5 text-[13px] leading-snug text-[#1f6c9f]">
             Add more files to merge: drop them anywhere or pick again — they queue up and
             join in order.
           </p>
         )}
 
-        <section className="card card-tint rounded-[22px] p-2">
+        <section className="panel p-6 sm:p-7" aria-label="Settings">
           {activeTool === "compress" && (
             <div className="flex flex-col gap-2">
               <Slider
@@ -1108,7 +1180,7 @@ export default function App() {
                 hint="Only ever scales down — a small clip is never stretched."
               />
               {compressEstimate && (
-                <p className="text-[12px] leading-snug text-neutral-500">
+                <p className="text-[13px] leading-snug text-neutral-500">
                   Roughly{" "}
                   <span className="font-semibold tabular-nums text-neutral-700">
                     {compressEstimate.bytes}
@@ -1163,7 +1235,7 @@ export default function App() {
                   )}
                 </>
               ) : (
-                <p className="text-[11px] leading-snug text-neutral-400">
+                <p className="text-[12px] leading-snug text-neutral-400">
                   Mark every section you want gone — the head and tail are kept and joined back
                   together. Always re-encodes.
                 </p>
@@ -1219,10 +1291,10 @@ export default function App() {
                 />
               </Field>
               {opts.convert!.format === "gif" ? (
-                <p className="rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-neutral-600">
+                <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
                   {GIF_MAX_SEC} seconds, no sound, 480px wide.
                   {gifTooLong && (
-                    <span className="font-semibold text-amber-700">
+                    <span className="font-semibold text-[#9f2f2d]">
                       {" "}
                       This clip is {fmtTime(pickedDuration!)} — only the first {GIF_MAX_SEC}s will be
                       exported.
@@ -1230,7 +1302,7 @@ export default function App() {
                   )}
                 </p>
               ) : opts.convert!.format === "mp3" ? (
-                <p className="rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-neutral-600">
+                <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
                   Audio only — the picture is dropped and the file comes out at 192 kbps.
                 </p>
               ) : (
@@ -1316,7 +1388,7 @@ export default function App() {
                 hint="Keeps the area around your tap, so faces stay in shot."
               >
                 <div
-                  className="relative h-24 touch-none rounded-[14px] border border-black/10 bg-gradient-to-br from-neutral-100 to-neutral-200"
+                  className="relative h-28 touch-none rounded-lg border border-[#e0dfdb] bg-[#f1f0ed]"
                   onPointerDown={(e) => {
                     const el = e.currentTarget;
                     const r = el.getBoundingClientRect();
@@ -1339,7 +1411,7 @@ export default function App() {
                   }}
                 >
                   <div
-                    className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent bg-white shadow"
+                    className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#111] bg-white"
                     style={{
                       left: `${Math.max(0, Math.min(100, Number(opts.crop!.focalX ?? "50") || 50))}%`,
                       top: `${Math.max(0, Math.min(100, Number(opts.crop!.focalY ?? "50") || 50))}%`,
@@ -1347,11 +1419,11 @@ export default function App() {
                   />
                 </div>
               </Field>
-              <div className="flex items-center gap-3 rounded-[14px] bg-black/[0.04] px-3 py-2">
+              <div className="flex items-center gap-3 rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5">
                 <div className="grid h-12 w-12 shrink-0 place-items-center">
                   {cropPreview ? (
                     <div
-                      className="max-h-full max-w-full rounded-[4px] border-2 border-accent bg-accent/15"
+                      className="max-h-full max-w-full rounded-[4px] border-2 border-[#111] bg-[#111]/[0.06]"
                       style={{
                         aspectRatio: `${cropPreview.W} / ${cropPreview.H}`,
                         ...(cropPreview.W / cropPreview.H >= 1
@@ -1361,7 +1433,7 @@ export default function App() {
                     />
                   ) : (
                     <div
-                      className="rounded-[4px] border-2 border-accent bg-accent/15"
+                      className="rounded-[4px] border-2 border-[#111] bg-[#111]/[0.06]"
                       style={{ width: "1.75rem", height: "1.75rem" }}
                     />
                   )}
@@ -1494,7 +1566,7 @@ export default function App() {
           )}
 
           {activeTool === "merge" && (
-            <p className="rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-neutral-600">
+            <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
               Everything is normalized to 720p30 + AAC so mismatched clips join cleanly.
               Mixed-size videos get letterboxed, not stretched.
             </p>
@@ -1534,7 +1606,7 @@ export default function App() {
           )}
 
           {activeTool === "reverse" && (
-            <p className="rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-neutral-600">
+            <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
               The whole clip plays backwards, audio included. Long clips take a moment —
               reverse buffers the entire video before writing.
             </p>
@@ -1664,18 +1736,18 @@ export default function App() {
         </section>
 
         {failure && (
-          <section className="card card-warn rounded-[22px] p-3">
-            <p className="text-[14px] font-semibold tracking-tight text-amber-900">
+          <section className="rounded-xl border border-[#f0d3d4] bg-[#fdebec] p-5">
+            <p className="text-[15px] font-semibold tracking-[-0.01em] text-[#9f2f2d]">
               {failure.title}
             </p>
             {failure.hint && (
-              <p className="mt-1 text-[13px] leading-snug text-amber-800">{failure.hint}</p>
+              <p className="mt-1 text-[14px] leading-snug text-[#9f2f2d]/85">{failure.hint}</p>
             )}
             <details className="mt-2">
-              <summary className="cursor-pointer text-[12px] font-medium text-amber-700">
+              <summary className="cursor-pointer text-[13px] font-medium text-[#9f2f2d]">
                 Technical details
               </summary>
-              <pre className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-[10px] bg-amber-100/70 p-2 text-[11px] text-amber-900">
+              <pre className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[#f0d3d4] bg-white/70 p-2 font-mono text-[12px] text-[#9f2f2d]">
                 {failure.detail}
               </pre>
             </details>
@@ -1683,10 +1755,10 @@ export default function App() {
         )}
 
         {resultUrl && resultFile && (
-          <section ref={resultWrapRef} className="card card-good rounded-[22px] p-3">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-[13px] font-semibold tracking-tight text-neutral-800">Saved</p>
-              <p className="truncate text-[12px] tabular-nums text-neutral-500">{resultMeta}</p>
+          <section ref={resultWrapRef} className="panel scroll-mt-24 p-6">
+            <div className="flex items-center justify-between gap-3">
+              <span className="tag tag-green">Saved</span>
+              <p className="truncate font-mono text-[12px] tabular-nums text-[#a3a099]">{resultMeta}</p>
             </div>
             {compressCompare && pickedUrl && (resultKind === "video" || resultKind === "image") ? (
               <div className="mt-3">
@@ -1702,7 +1774,7 @@ export default function App() {
                   src={resultUrl}
                   controls
                   playsInline
-                  className="mt-3 max-h-64 w-full rounded-2xl bg-black"
+                  className="mt-4 max-h-80 w-full rounded-lg border border-[#eaeaea] bg-black"
                 />
               )
             )}
@@ -1711,13 +1783,13 @@ export default function App() {
               <img
                 src={resultUrl}
                 alt="Converted image preview"
-                className="mt-3 max-h-64 w-full rounded-2xl bg-black object-contain"
+                className="mt-4 max-h-80 w-full rounded-lg border border-[#eaeaea] bg-black object-contain"
               />
             )}
             {frameFiles.length > 0 && (
               <div className="mt-3">
-                <p className="text-[11px] font-medium text-neutral-500">
-                  Extracted frames — tap one to download it.
+                <p className="font-mono text-[12px] uppercase tracking-[0.06em] text-[#a3a099]">
+                  Extracted frames — click one to download it.
                 </p>
                 <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1">
                   {frameFiles.map((f) => (
@@ -1730,7 +1802,7 @@ export default function App() {
                       <img
                         src={URL.createObjectURL(f)}
                         alt={f.name}
-                        className="h-16 w-auto rounded-[8px] border border-black/10 bg-black"
+                        className="h-16 w-auto rounded-[8px] border border-[#e5e4e0] bg-black"
                       />
                     </a>
                   ))}
@@ -1741,35 +1813,35 @@ export default function App() {
               <img
                 src={resultUrl}
                 alt="Converted GIF preview"
-                className="mt-3 max-h-64 w-full rounded-2xl bg-black object-contain"
+                className="mt-4 max-h-80 w-full rounded-lg border border-[#eaeaea] bg-black object-contain"
               />
             )}
             {picked && (
-              <dl className="mt-3 grid grid-cols-3 gap-2 rounded-[14px] bg-white/70 p-2.5">
+              <dl className="mt-4 grid grid-cols-3 gap-2 rounded-lg border border-[#eaeaea] bg-[#fafaf8] p-3">
                 <div>
-                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#a3a099]">
                     In
                   </dt>
-                  <dd className="text-[13px] font-semibold tabular-nums text-neutral-800">
+                  <dd className="mt-0.5 text-[14px] font-semibold tabular-nums text-[#111]">
                     {formatBytes(picked.size)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#a3a099]">
                     Out
                   </dt>
-                  <dd className="text-[13px] font-semibold tabular-nums text-neutral-800">
+                  <dd className="mt-0.5 text-[14px] font-semibold tabular-nums text-[#111]">
                     {formatBytes(resultFile.size)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#a3a099]">
                     Change
                   </dt>
                   <dd
                     className={
-                      "text-[13px] font-semibold tabular-nums " +
-                      (change.startsWith("−") ? "text-emerald-700" : "text-neutral-800")
+                      "text-[14px] font-semibold tabular-nums " +
+                      (change.startsWith("−") ? "text-[#346538]" : "text-[#111]")
                     }
                   >
                     {change}
@@ -1777,11 +1849,11 @@ export default function App() {
                 </div>
               </dl>
             )}
-            <div className="mt-2 grid grid-cols-2 gap-2.5">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => void handleRunClick()}
-                className="btn-apple-secondary min-h-11 rounded-[12px] text-[13px] font-semibold text-neutral-800"
+                className="btn-secondary min-h-11 text-[14px] font-semibold"
               >
                 Run again
               </button>
@@ -1792,7 +1864,7 @@ export default function App() {
                   setFailure(null);
                   fileInputRef.current?.click();
                 }}
-                className="btn-apple-secondary min-h-11 rounded-[12px] text-[13px] font-semibold text-neutral-800"
+                className="btn-secondary min-h-11 text-[14px] font-semibold"
               >
                 Another file
               </button>
@@ -1800,130 +1872,118 @@ export default function App() {
           </section>
         )}
 
-        <details className="card card-tint rounded-[22px] p-3 text-[13px] leading-relaxed text-neutral-500">
-          <summary className="cursor-pointer font-medium text-neutral-700">Limits &amp; privacy</summary>
-          <ul className="mt-2.5 list-disc space-y-1.5 pl-4">
-            <li>
-              Everything runs locally via ffmpeg.wasm. No uploads, works offline after first load.
-            </li>
-            <li>
-              Best for clips &lt; 2 min, ≤1080p, &lt;200 MB desktop / &lt;50 MB mobile. Bigger files
-              can crash mobile tabs.
-            </li>
-            <li>First run downloads a ~30 MB engine once, then it&apos;s cached.</li>
-          </ul>
-        </details>
-
-        {jobHistory.length > 0 && (
+        <LimitsNote />
+        </div>
+        <aside className="min-w-0 space-y-4 lg:sticky lg:top-20">
+          <section className="panel p-6" aria-label="Run">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="section-label">Run</p>
+              {picked && (
+                <p className="truncate font-mono text-[12px] tabular-nums text-[#a3a099]">
+                  {formatBytes(picked.size)}
+                </p>
+              )}
+            </div>
+            {running ? (
+              <div className="mt-3" role="status" aria-live="polite">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="truncate text-[14px] font-semibold text-[#111]">
+                    {runningLabel}
+                  </p>
+                  <p className="shrink-0 font-mono text-[13px] tabular-nums text-[#787774]">
+                    {Math.round(progress * 100)}%
+                  </p>
+                </div>
+                <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#ecebe8]">
+                  <div
+                    className="h-full rounded-full bg-[#111] transition-[width] duration-200"
+                    style={{ width: `${Math.round(progress * 100)}%` }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="btn-secondary mt-3 min-h-11 w-full text-[14px] font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : resultUrl && resultFile ? (
+              <div className="mt-3 flex flex-col gap-2">
+                <a
+                  id="downloadBtn"
+                  href={resultUrl}
+                  download={resultFile.name}
+                  className="btn-primary flex min-h-12 items-center justify-center px-4 text-center text-[15px] no-underline"
+                >
+                  Download · {formatBytes(resultFile.size)}
+                </a>
+                {shareSupported && (
+                  <button
+                    type="button"
+                    onClick={() => void handleShare()}
+                    className="btn-secondary min-h-11 text-[14px] font-semibold"
+                  >
+                    {shareLabel}
+                  </button>
+                )}
+                <p className="font-mono text-[12px] leading-relaxed text-[#a3a099]">
+                  Saved to this device only — nothing was uploaded.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-col gap-2">
+                {picked && validationError ? (
+                  <p role="status" className="text-[13px] font-medium leading-snug text-[#9f2f2d]">
+                    {validationError}
+                  </p>
+                ) : !picked && !engineReady ? (
+                  <p className="text-[13px] leading-snug text-[#a3a099]">
+                    First run downloads a ~30 MB engine, then it&apos;s cached.
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={runDisabled}
+                  onClick={() => void handleRunClick()}
+                  className="btn-primary min-h-12 text-[15px]"
+                >
+                  {picked ? runLabel : "Pick a file to start"}
+                </button>
+              </div>
+            )}
+          </section>
           <RecentJobs jobs={jobHistory} onReuse={rerunFromHistory} onClear={clearHistory} />
-        )}
+        </aside>
       </main>
         </>
       )}
 
-      <footer className="mt-8 flex flex-col items-center gap-2 border-t border-black/[0.06] pt-5 pb-2 text-center">
-        <a
-          href="https://x.com/tanavtwt"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-apple-secondary flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium text-neutral-600"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" className="size-3.5 fill-current">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-          </svg>
-          <span>@tanavtwt</span>
-        </a>
-        <p className="text-[11px] text-neutral-400">Files never leave this device · Built in the open</p>
-      </footer>
-
-      {/* The job bar: one surface that always holds the next useful action, so
-          nothing important sits below the fold on a phone. Tool pages only —
-          on the index the tiles are the actions. */}
-      {view.name === "tool" && (
-      <div
-        data-jobbar=""
-        className="sticky bottom-0 z-30 -mx-4 mt-2 px-4 pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
-      >
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 top-0 -z-10 bg-gradient-to-t from-[#f5f5f7] via-[#f5f5f7]/90 to-transparent"
-        />
-        <div className="rounded-[22px] border border-black/[0.07] bg-white/85 p-2 shadow-[0_-2px_30px_-16px_rgb(0_0_0/0.35)] backdrop-blur-xl">
-          {running ? (
-            <div className="px-1 py-1" role="status" aria-live="polite">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="truncate text-[13px] font-semibold tracking-tight text-neutral-800">
-                  {runningLabel}
-                </p>
-                <p className="shrink-0 text-[13px] font-semibold tabular-nums text-neutral-500">
-                  {Math.round(progress * 100)}%
-                </p>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/[0.08]">
-                <div
-                  className="h-full rounded-full bg-accent transition-[width] duration-200"
-                  style={{ width: `${Math.round(progress * 100)}%` }}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="btn-apple-secondary mt-2 min-h-10 w-full rounded-[12px] text-[13px] font-semibold text-neutral-700"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : resultUrl && resultFile ? (
-            <div className="flex gap-2.5">
-              <a
-                id="downloadBtn"
-                href={resultUrl}
-                download={resultFile.name}
-                className="btn-apple-primary grid min-h-14 flex-1 place-items-center rounded-[16px] text-[16px] font-semibold no-underline"
-              >
-                Download · {formatBytes(resultFile.size)}
-              </a>
-              {shareSupported && (
-                <button
-                  type="button"
-                  onClick={() => void handleShare()}
-                  className="btn-apple-secondary min-h-14 rounded-[16px] px-4 text-[15px] font-semibold text-neutral-800"
-                >
-                  {shareLabel}
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {picked && validationError ? (
-                <p role="status" className="px-1 text-[12px] font-medium leading-snug text-red-600">
-                  {validationError}
-                </p>
-              ) : !picked && !engineReady ? (
-                <p className="px-1 text-[12px] leading-snug text-neutral-400">
-                  First run downloads a ~30 MB engine, then it&apos;s cached.
-                </p>
-              ) : null}
-              <button
-                type="button"
-                disabled={runDisabled}
-                onClick={() => void handleRunClick()}
-                className="btn-apple-primary min-h-14 rounded-[16px] text-[16px] font-semibold"
-              >
-                {picked ? runLabel : "Pick a file to start"}
-              </button>
-            </div>
-          )}
+      <footer className="mt-10 border-t border-[#eaeaea] py-6">
+        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+          <p className="font-mono text-[12px] uppercase tracking-[0.06em] text-[#a3a099]">
+            Files never leave this device
+          </p>
+          <a
+            href="https://x.com/tanavtwt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-[13px] font-medium text-[#787774] transition-colors hover:text-[#111]"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="size-3.5 fill-current">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
+            <span>@tanavtwt</span>
+          </a>
         </div>
-      </div>
-      )}
+      </footer>
 
       {dragActive && (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-[#f5f5f7]/85 backdrop-blur-sm"
+          className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-[#f7f6f3]/85 backdrop-blur-sm"
         >
-          <p className="rounded-[22px] border-2 border-dashed border-accent bg-white px-10 py-12 text-center text-[15px] font-semibold tracking-tight">
+          <p className="rounded-xl border-2 border-dashed border-[#111] bg-white px-10 py-12 text-center font-serif text-[20px] text-[#111]">
             Drop it anywhere to load
           </p>
         </div>

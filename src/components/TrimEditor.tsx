@@ -168,7 +168,7 @@ export default function TrimEditor({
       return (
         <div className="flex flex-col gap-2">
           <CutList ranges={ranges} dur={dur} onChange={(rs) => onCuts(fmtRanges(rs))} />
-          <p className="text-[11px] leading-snug text-neutral-400">
+          <p className="text-[12px] leading-snug text-neutral-400">
             {picked
               ? "Reading duration… the timeline appears once it's known. Sections can be typed meanwhile (0:12-0:18, 90-95)."
               : "Pick a file to unlock the draggable timeline. You can also type sections (0:12-0:18, 90-95)."}
@@ -190,7 +190,7 @@ export default function TrimEditor({
             />
           </Field>
         </div>
-        <p className="text-[11px] leading-snug text-neutral-400">
+        <p className="text-[12px] leading-snug text-neutral-400">
           {picked
             ? "Reading duration… the draggable timeline appears once it's known. You can paste timestamps meanwhile (90, 1:30, 01:30.5)."
             : "Pick a file to unlock the draggable timeline. You can also paste timestamps directly (90, 1:30, 01:30.5)."}
@@ -264,7 +264,7 @@ function CutList({
 
   if (ranges.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-black/10 bg-black/[0.03] px-3 py-2.5 text-[11px] leading-snug text-neutral-400">
+      <p className="rounded-lg border border-dashed border-[#e0dfdb] bg-[#fafaf8] px-3 py-2.5 text-[12px] leading-snug text-[#a3a099]">
         No sections marked — the whole file is kept. Drag across the timeline to mark one, or
         type exact times above.
       </p>
@@ -276,7 +276,7 @@ function CutList({
       {ranges.map((r, i) => (
         <div
           key={i}
-          className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-xl bg-red-500/[0.06] px-2 py-2"
+          className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-lg border border-[#f0d3d4] bg-[#fdebec] px-2 py-2"
         >
           <Field label={`Section ${i + 1} from`}>
             <TextInput
@@ -305,9 +305,9 @@ function CutList({
             type="button"
             aria-label={`Remove section ${i + 1}`}
             onClick={() => onChange(ranges.filter((_, j) => j !== i))}
-            className="mb-0.5 grid size-11 shrink-0 place-items-center rounded-xl border border-red-200 bg-white text-[15px] font-semibold text-red-600"
+            className="mb-0.5 grid size-11 shrink-0 place-items-center rounded-md border border-[#e5e4e0] bg-white text-[16px] font-medium text-[#9f2f2d]"
           >
-            ✕
+            ×
           </button>
         </div>
       ))}
@@ -675,10 +675,10 @@ function TrimTimeline({
   ) : peaks ? (
     <canvas ref={waveCanvasRef} className="h-full w-full" />
   ) : stripFailed ? (
-    <div className="h-full w-full bg-gradient-to-r from-neutral-300 via-neutral-200 to-neutral-300" />
+    <div className="h-full w-full bg-[#ecebe8]" />
   ) : (
     Array.from({ length: 8 }).map((_, i) => (
-      <div key={i} className="h-full flex-1 animate-pulse bg-black/[0.06]" />
+      <div key={i} className="h-full flex-1 animate-pulse bg-black/[0.04]" />
     ))
   );
 
@@ -693,7 +693,7 @@ function TrimTimeline({
           controls
           playsInline
           preload="metadata"
-          className="max-h-40 w-full rounded-xl bg-black object-contain"
+          className="max-h-56 w-full rounded-lg border border-[#eaeaea] bg-black object-contain"
           onTimeUpdate={handleTimeUpdate}
           onSeeked={showHead}
           onPause={() => {
@@ -723,7 +723,7 @@ function TrimTimeline({
               ? "Nothing cut"
               : `Cut ${shownCuts.length} section${shownCuts.length > 1 ? "s" : ""}`}
           </span>
-          <span className="rounded-full bg-red-500/10 px-2 py-0.5 font-medium text-red-600">
+          <span className="tag tag-red">
             {removedSecs > 0 ? `Keep ${fmtTrim(dur - removedSecs)}` : "Keep everything"}
           </span>
           <span className="font-medium">{fmtTrim(dur)}</span>
@@ -731,7 +731,7 @@ function TrimTimeline({
       ) : (
         <div className="flex items-baseline justify-between text-xs text-neutral-500">
           <span className="font-semibold text-neutral-900">{fmtTrim(s)}</span>
-          <span className="rounded-full bg-accent/10 px-2 py-0.5 font-medium text-accent">
+          <span className="tag tag-green">
             {e > s ? `Keep ${fmtTrim(e - s)}` : "End must be after start"}
           </span>
           <span className="font-medium">{fmtTrim(e)}</span>
@@ -740,7 +740,7 @@ function TrimTimeline({
 
       <div
         ref={trackRef}
-        className="trim-track relative h-14 overflow-hidden rounded-xl border border-black/10 bg-black/[0.07]"
+        className="trim-track relative h-20 overflow-hidden rounded-lg border border-[#e0dfdb] bg-[#f1f0ed]"
         onPointerDown={handleTrackPointerDown}
         onPointerMove={handleTrackPointerMove}
         onPointerUp={endDrag}
@@ -758,11 +758,11 @@ function TrimTimeline({
                 data-cut=""
                 data-i={i}
                 data-role="move"
-                className="absolute inset-y-0 cursor-grab bg-red-500/40"
+                className="absolute inset-y-0 cursor-grab bg-[#e8a3a4]/60"
                 style={{ left: `${a}%`, width: `${Math.max(0.5, b - a)}%` }}
               >
                 <span
-                  className="pointer-events-none absolute inset-0 border-y-2 border-red-600/70"
+                  className="pointer-events-none absolute inset-0 border-y-2 border-[#b94e4f]/70"
                   aria-hidden="true"
                 />
                 <button
@@ -776,7 +776,7 @@ function TrimTimeline({
                   aria-valuemax={dur}
                   aria-valuenow={r.a}
                   aria-valuetext={fmtTrim(r.a)}
-                  className="trim-handle absolute inset-y-0 left-0 w-3 rounded-r-md bg-white shadow-[0_1px_4px_rgb(0_0_0/0.3)]"
+                  className="trim-handle absolute inset-y-0 left-0 w-3 rounded-r-md border border-[#d8d7d2] bg-white"
                   onKeyDown={(ev) => {
                     const step = ev.shiftKey ? 1 : 0.1;
                     if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") {
@@ -802,7 +802,7 @@ function TrimTimeline({
                   aria-valuemax={dur}
                   aria-valuenow={r.b}
                   aria-valuetext={fmtTrim(r.b)}
-                  className="trim-handle absolute inset-y-0 right-0 w-3 rounded-l-md bg-white shadow-[0_1px_4px_rgb(0_0_0/0.3)]"
+                  className="trim-handle absolute inset-y-0 right-0 w-3 rounded-l-md border border-[#d8d7d2] bg-white"
                   onKeyDown={(ev) => {
                     const step = ev.shiftKey ? 1 : 0.1;
                     if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") {
@@ -823,9 +823,9 @@ function TrimTimeline({
                   data-i={i}
                   data-role="del"
                   aria-label={`Remove section ${i + 1}`}
-                  className="absolute left-1/2 top-1 grid size-6 -translate-x-1/2 place-items-center rounded-full bg-white text-[11px] font-bold leading-none text-red-600 shadow-[0_1px_3px_rgb(0_0_0/0.35)]"
+                  className="absolute left-1/2 top-1 grid size-6 -translate-x-1/2 place-items-center rounded-md border border-[#e5e4e0] bg-white text-[12px] font-bold leading-none text-[#9f2f2d]"
                 >
-                  ✕
+                  ×
                 </button>
               </div>
             );
@@ -841,13 +841,13 @@ function TrimTimeline({
               style={{ width: `${100 - hi}%` }}
             />
             <div
-              className="pointer-events-none absolute inset-y-0 rounded-[4px] border-2 border-accent bg-accent/15"
+              className="pointer-events-none absolute inset-y-0 rounded-[4px] border-2 border-[#111] bg-[#111]/[0.06]"
               style={{ left: `${lo}%`, width: `${Math.max(0, hi - lo)}%` }}
             />
             <button
               ref={hStartRef}
               type="button"
-              className="trim-handle absolute inset-y-0 z-10 grid w-6 place-items-center bg-white shadow-[0_1px_4px_rgb(0_0_0/0.3)] outline-none left-0 rounded-r-lg"
+              className="trim-handle absolute inset-y-0 z-10 grid w-6 place-items-center border border-[#d8d7d2] bg-white outline-none left-0 rounded-r-md"
               style={{ left: `calc(${lo}% - ${(lo * 24) / 100}px)` }}
               role="slider"
               aria-label="Trim start"
@@ -877,7 +877,7 @@ function TrimTimeline({
             <button
               ref={hEndRef}
               type="button"
-              className="trim-handle absolute inset-y-0 z-10 grid w-6 place-items-center bg-white shadow-[0_1px_4px_rgb(0_0_0/0.3)] outline-none right-0 rounded-l-lg"
+              className="trim-handle absolute inset-y-0 z-10 grid w-6 place-items-center border border-[#d8d7d2] bg-white outline-none right-0 rounded-l-md"
               style={{ left: `calc(${hi}% - ${(hi * 24) / 100}px)` }}
               role="slider"
               aria-label="Trim end"
@@ -909,7 +909,7 @@ function TrimTimeline({
 
         <div
           ref={playheadRef}
-          className="pointer-events-none absolute inset-y-0 hidden w-[2px] bg-white shadow-[0_0_4px_rgb(0_0_0/0.6)]"
+          className="pointer-events-none absolute inset-y-0 hidden w-[2px] bg-white outline outline-1 outline-black/25"
         />
       </div>
 
@@ -923,29 +923,29 @@ function TrimTimeline({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              className="btn-apple-secondary min-h-10 rounded-[12px] text-[13px] font-semibold text-neutral-800"
+              className="btn-secondary min-h-11 text-[14px] font-semibold"
               onClick={handlePlayKeep}
             >
-              ▶ Preview keep
+              Preview keep
             </button>
             <button
               type="button"
-              className="btn-apple-secondary min-h-10 rounded-[12px] text-[13px] font-semibold text-neutral-800"
+              className="btn-secondary min-h-11 text-[14px] font-semibold"
               onClick={addCutAtPlayhead}
             >
-              ＋ Cut here
+              Add cut here
             </button>
           </div>
           {shownCuts.length > 0 && (
             <button
               type="button"
-              className="w-full py-1 text-[13px] font-medium text-red-600"
+              className="w-full py-1 text-[14px] font-medium text-[#9f2f2d]"
               onClick={() => onCuts("")}
             >
               Clear all sections
             </button>
           )}
-          <p className="text-[11px] leading-snug text-neutral-400">
+          <p className="text-[12px] leading-snug text-neutral-400">
             Red = removed. Drag across the timeline to cut a middle section, drag a section to
             move it, or type exact times. Cutting always re-encodes, so it is not a keyframe
             copy.
@@ -977,21 +977,21 @@ function TrimTimeline({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              className="btn-apple-secondary min-h-10 rounded-[12px] text-[13px] font-semibold text-neutral-800"
+              className="btn-secondary min-h-11 text-[14px] font-semibold"
               onClick={handlePlayKeep}
             >
-              ▶ Play keep
+              Play keep
             </button>
             <button
               type="button"
-              className="btn-apple-secondary min-h-10 rounded-[12px] text-[13px] font-semibold text-neutral-800"
+              className="btn-secondary min-h-11 text-[14px] font-semibold"
               onClick={() => commit(0, dur)}
             >
               Full length
             </button>
           </div>
 
-          <p className="text-[11px] leading-snug text-neutral-400">
+          <p className="text-[12px] leading-snug text-neutral-400">
             Blue = kept part. Drag handles, drag the middle to move, or paste timestamps like
             90, 1:30, 01:30.5.
           </p>

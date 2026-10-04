@@ -1,7 +1,7 @@
 import { useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
-const labelCls = "text-[12px] font-medium leading-tight text-neutral-600";
-const hintCls = "text-[11px] leading-snug text-neutral-400";
+const labelCls = "text-[13px] font-medium leading-tight text-[#55534e]";
+const hintCls = "text-[13px] leading-snug text-[#a3a099]";
 
 /**
  * A labelled group of controls.
@@ -25,7 +25,7 @@ export function Field({
 }) {
   const cls = inline
     ? "grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1"
-    : "flex flex-col gap-1";
+    : "flex flex-col gap-1.5";
   const body = (
     <>
       <span className={inline ? `${labelCls} whitespace-nowrap` : labelCls}>{label}</span>
@@ -43,14 +43,14 @@ export function Field({
 }
 
 export const inputCls =
-  "min-h-10 w-full rounded-[12px] border border-black/10 bg-[#f5f5f7] px-3 text-[14px] text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-accent";
+  "min-h-11 w-full rounded-md border border-[#e0dfdb] bg-white px-3 text-[15px] text-[#111] outline-none transition-colors placeholder:text-[#b4b2aa] focus:border-[#111]";
 
 /** [value, label] — or [value, label, sub-label] for a two-line chip. */
 export type SegOption = readonly [string, string] | readonly [string, string, string];
 
 /**
  * Segmented picker. Every option is on screen, so choosing one is a single
- * tap instead of opening a menu and reading it.
+ * click instead of opening a menu and reading it.
  */
 export function Segmented({
   value,
@@ -92,7 +92,7 @@ export function Segmented({
       role="radiogroup"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={`grid ${grid} gap-0.5 rounded-[13px] bg-black/[0.05] p-0.5`}
+      className={`grid ${grid} gap-1 rounded-lg border border-[#e5e4e0] bg-[#f4f3f0] p-1`}
     >
       {options.map(([v, label, sub], i) => {
         const on = v === value;
@@ -109,16 +109,16 @@ export function Segmented({
             onClick={() => onChange(v)}
             className={
               (on
-                ? "bg-white text-neutral-900 shadow-[0_1px_3px_rgb(0_0_0/0.14)]"
-                : "text-neutral-500 hover:text-neutral-800") +
-              " flex min-h-10 flex-col items-center justify-center gap-0.5 rounded-[11px] px-1 py-1 text-center transition-colors"
+                ? "border-[#e0dfdb] bg-white text-[#111] shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                : "border-transparent text-[#787774] hover:text-[#111]") +
+              " flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md border px-1 py-1 text-center transition-colors"
             }
           >
-            <span className="text-[12.5px] font-semibold leading-tight tracking-tight">
+            <span className="text-[13.5px] font-semibold leading-tight tracking-tight">
               {label}
             </span>
             {sub ? (
-              <span className="text-[10px] font-medium leading-none tabular-nums opacity-60">
+              <span className="text-[11px] font-medium leading-none tabular-nums opacity-60">
                 {sub}
               </span>
             ) : null}
@@ -135,8 +135,8 @@ export function trimNum(v: number): string {
 }
 
 /**
- * The furniture around a slider: name on the left, current choice in an accent
- * pill on the right, stop marks under the track, hint underneath.
+ * The furniture around a slider: name on the left, current choice in a small
+ * mono chip on the right, stop marks under the track, hint underneath.
  */
 function SliderFrame({
   label,
@@ -153,21 +153,21 @@ function SliderFrame({
   children: ReactNode;
 }) {
   return (
-    <div role="group" aria-label={label} className="rounded-[15px] bg-black/[0.035] px-3.5 py-2.5">
+    <div role="group" aria-label={label} className="rounded-lg border border-[#eaeaea] bg-white px-3.5 py-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className={labelCls}>{label}</span>
-        <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[12px] font-semibold tabular-nums tracking-tight text-accent">
+        <span className="shrink-0 rounded-full border border-[#e5e4e0] bg-[#f4f3f0] px-2 py-0.5 font-mono text-[12.5px] font-semibold tabular-nums text-[#111]">
           {valueText}
         </span>
       </div>
       <div className="mt-1">{children}</div>
       {ticks && ticks.length > 1 && (
         // Inset by half a thumb so the end dots sit under the thumb centres.
-        <div aria-hidden="true" className="relative mx-[13px] h-1.5">
+        <div aria-hidden="true" className="relative mx-[11px] h-1.5">
           {ticks.map((p, i) => (
             <span
               key={i}
-              className="absolute top-0 size-1 -translate-x-1/2 rounded-full bg-black/20"
+              className="absolute top-0 size-1 -translate-x-1/2 rounded-full bg-[#d8d7d2]"
               style={{ left: `${p * 100}%` }}
             />
           ))}
@@ -295,19 +295,19 @@ export function Switch({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex min-h-10 w-full items-center justify-between gap-3 rounded-[12px] bg-black/[0.04] px-3 text-left transition-colors hover:bg-black/[0.06]"
+      className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-[#eaeaea] bg-white px-3 text-left transition-colors hover:border-[#d8d7d2]"
     >
-      <span className="text-[13px] font-semibold text-neutral-800">{label}</span>
+      <span className="text-[14px] font-medium text-[#111]">{label}</span>
       <span
         className={
-          (checked ? "bg-accent" : "bg-black/15") +
+          (checked ? "bg-[#111]" : "bg-[#e0dfdb]") +
           " flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors"
         }
       >
         <span
           className={
             (checked ? "translate-x-5" : "translate-x-0") +
-            " size-5 rounded-full bg-white shadow transition-transform"
+            " size-5 rounded-full bg-white transition-transform"
           }
         />
       </span>

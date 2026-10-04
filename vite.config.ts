@@ -11,9 +11,9 @@ const isolateHeaders = {
   "Cross-Origin-Embedder-Policy": "require-corp",
 };
 
-// First paint: inline the built stylesheet and preload the Latin Inter subset.
-// The app shell CSS is tiny (~24KB) and index.html already contains the
-// static tab/options markup, so inlining removes the extra stylesheet
+// First paint: inline the built stylesheet.
+// The app shell CSS is small and index.html already contains the
+// static markup, so inlining removes the extra stylesheet
 // round-trip that flashed unstyled content before main.ts hydrates.
 function firstPaint(): Plugin {
   return {
@@ -66,8 +66,8 @@ export default defineConfig({
         display: "standalone",
         display_override: ["window-controls-overlay", "standalone"],
         orientation: "any",
-        theme_color: "#f5f5f7",
-        background_color: "#f5f5f7",
+        theme_color: "#f7f6f3",
+        background_color: "#f7f6f3",
         categories: ["utilities", "photo", "video"],
         lang: "en",
         dir: "ltr",

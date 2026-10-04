@@ -34,7 +34,7 @@ export default function ComparePreview({
   return (
     <div className="flex flex-col gap-2">
       <div
-        className="relative overflow-hidden rounded-2xl bg-black"
+        className="relative overflow-hidden rounded-lg border border-[#eaeaea] bg-black"
         onClick={kind === "video" ? togglePlay : undefined}
       >
         {kind === "video" ? (
@@ -45,7 +45,7 @@ export default function ComparePreview({
               muted
               playsInline
               preload="metadata"
-              className="max-h-64 w-full"
+              className="max-h-80 w-full"
             />
             <video
               ref={bRef}
@@ -53,17 +53,17 @@ export default function ComparePreview({
               muted
               playsInline
               preload="metadata"
-              className="absolute inset-0 max-h-64 w-full"
+              className="absolute inset-0 max-h-80 w-full"
               style={{ clipPath: `inset(0 0 0 ${pos}%)` }}
             />
           </>
         ) : (
           <>
-            <img src={before} alt="Original" className="max-h-64 w-full object-contain" />
+            <img src={before} alt="Original" className="max-h-80 w-full object-contain" />
             <img
               src={after}
               alt="Compressed"
-              className="absolute inset-0 max-h-64 w-full object-contain"
+              className="absolute inset-0 max-h-80 w-full object-contain"
               style={{ clipPath: `inset(0 0 0 ${pos}%)` }}
             />
           </>
@@ -74,10 +74,10 @@ export default function ComparePreview({
           className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/80"
           style={{ left: `${pos}%` }}
         />
-        <span className="absolute left-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white">
+        <span className="absolute left-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-semibold text-white">
           Original
         </span>
-        <span className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white">
+        <span className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-semibold text-white">
           Result
         </span>
       </div>
@@ -88,10 +88,10 @@ export default function ComparePreview({
         max={100}
         value={pos}
         onChange={(e) => setPos(Number(e.target.value))}
-        className="w-full accent-[--color-accent]"
+        className="slider w-full"
       />
-      <p className="text-[11px] leading-snug text-neutral-400">
-        Drag to compare before and after.{kind === "video" ? " Tap the preview to play both." : ""}
+      <p className="text-[12px] leading-snug text-[#a3a099]">
+        Drag to compare before and after.{kind === "video" ? " Click the preview to play both." : ""}
       </p>
     </div>
   );

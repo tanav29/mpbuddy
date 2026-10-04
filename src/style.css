@@ -1,22 +1,40 @@
-@import "@fontsource-variable/inter";
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  /* One accent for the whole app: every other surface is neutral, so blue
-     always reads as "this is the action". */
-  --color-accent: #0071e3;
+  --font-sans: "Geist", "Geist Sans", "SF Pro Display", "Helvetica Neue", Helvetica, Arial,
+    ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Newsreader", "Lyon Text", Georgia, "Times New Roman", serif;
+  --font-mono: "Geist Mono", "SF Mono", ui-monospace, "JetBrains Mono", Menlo,
+    Consolas, monospace;
+
+  --color-canvas: #f7f6f3;
+  --color-surface: #ffffff;
+  --color-wash: #f4f3f0;
+  --color-ink: #111111;
+  --color-body: #2f3437;
+  --color-muted: #787774;
+  --color-faint: #a3a099;
+  --color-line: #eaeaea;
+  --color-line-dark: #e0dfdb;
+
+  --color-pale-red: #fdebec;
+  --color-pale-red-ink: #9f2f2d;
+  --color-pale-blue: #e1f3fe;
+  --color-pale-blue-ink: #1f6c9f;
+  --color-pale-green: #edf3ec;
+  --color-pale-green-ink: #346538;
+  --color-pale-yellow: #fbf3db;
+  --color-pale-yellow-ink: #956400;
 }
 
 :root {
-  /* Light is the only theme. Saying so stops iOS auto-darkening the page when
-     the phone itself is in dark mode. */
+  /* Light is the only theme. */
   color-scheme: light;
-  --bg: #f5f5f7;
-  --fg: #171717;
-  --card: rgb(255 255 255 / 0.92);
-  --card-border: rgb(0 0 0 / 0.06);
+}
+
+html {
+  /* A touch over 16px so rem-based spacing and chrome render a size up. */
+  font-size: 106.25%;
 }
 
 html,
@@ -28,12 +46,8 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  font-feature-settings: "cv11", "ss01";
-  color: var(--fg);
-  background:
-    radial-gradient(1100px 520px at 85% -8%, rgb(0 113 227 / 0.07), transparent 60%),
-    radial-gradient(800px 480px at -10% 0%, rgb(255 158 44 / 0.05), transparent 55%),
-    var(--bg);
+  background: var(--color-canvas);
+  color: var(--color-body);
 }
 
 input,
@@ -42,7 +56,7 @@ select {
 }
 
 ::selection {
-  background: rgb(0 113 227 / 0.18);
+  background: #e9e6dd;
 }
 
 button:focus-visible,
@@ -51,79 +65,131 @@ summary:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [role="radio"]:focus-visible,
-[role="switch"]:focus-visible {
-  outline: 2px solid rgb(0 113 227 / 0.6);
+[role="switch"]:focus-visible,
+[role="slider"]:focus-visible {
+  outline: 2px solid #111;
   outline-offset: 2px;
 }
 
-/* Cards carry the border and the lift only, so each call site picks its own
-   surface (plain, warning, success) without fighting the class. */
-.card {
-  border: 1px solid var(--card-border);
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.04),
-    0 12px 32px -16px rgb(0 0 0 / 0.14);
-}
-.card-tint {
-  background: var(--card);
-}
-.card-warn {
-  background: #fff8ec;
-  border-color: #f2dcb2;
-}
-.card-good {
-  background: #f1fbf5;
-  border-color: #bde5cb;
+/* Surfaces: one flat panel. Card, divider and border all share #EAEAEA. */
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
 }
 
-/* 3D embossed primary (iOS blue push button) */
-.btn-apple-primary {
+/* Micro-label for section kickers: mono, uppercase, wide tracking. */
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+/* Primary action: solid ink, square-ish, no shadow. */
+.btn-primary {
   color: #fff;
-  background: linear-gradient(180deg, #3d9bff 0%, #0071e3 55%, #0068d1 100%);
-  border: 1px solid rgb(0 90 180 / 0.9);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.45),
-    inset 0 -2px 4px rgb(0 40 90 / 0.28),
-    0 1px 2px rgb(0 0 0 / 0.18),
-    0 10px 22px -10px rgb(0 113 227 / 0.65);
-  text-shadow: 0 1px 1px rgb(0 0 0 / 0.25);
-  transition: transform 0.06s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  background: #111;
+  border: 1px solid #111;
+  border-radius: 6px;
+  font-weight: 600;
+  transition: background 0.15s ease, transform 0.06s ease;
 }
-.btn-apple-primary:hover:not(:disabled) {
-  filter: brightness(1.04);
+.btn-primary:hover:not(:disabled) {
+  background: #333;
+  border-color: #333;
 }
-.btn-apple-primary:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.25),
-    inset 0 2px 6px rgb(0 40 90 / 0.35),
-    0 1px 2px rgb(0 0 0 / 0.15);
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
 }
-.btn-apple-primary:disabled {
-  opacity: 0.45;
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.35),
-    0 1px 2px rgb(0 0 0 / 0.1);
+.btn-primary:disabled {
+  opacity: 0.4;
 }
 
-/* 3D embossed secondary (white Apple button) */
-.btn-apple-secondary {
-  background: linear-gradient(180deg, #ffffff 0%, #f2f2f5 100%);
-  border: 1px solid rgb(0 0 0 / 0.1);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.9),
-    inset 0 -1px 0 rgb(0 0 0 / 0.05),
-    0 1px 2px rgb(0 0 0 / 0.08);
-  transition: transform 0.06s ease, box-shadow 0.15s ease, background 0.15s ease;
+/* Secondary action: white, hairline border, no shadow. */
+.btn-secondary {
+  color: var(--color-ink);
+  background: #fff;
+  border: 1px solid #e5e4e0;
+  border-radius: 6px;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.06s ease;
 }
-.btn-apple-secondary:hover {
-  background: linear-gradient(180deg, #ffffff 0%, #e9e9ee 100%);
+.btn-secondary:hover {
+  border-color: #d8d7d2;
+  background: #fafaf8;
 }
-.btn-apple-secondary:active {
-  transform: translateY(1px);
-  box-shadow:
-    inset 0 2px 5px rgb(0 0 0 / 0.1),
-    0 1px 1px rgb(0 0 0 / 0.06);
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+
+/* Status badges: pill, tiny, uppercase, muted pastel only. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.tag-red {
+  background: var(--color-pale-red);
+  color: var(--color-pale-red-ink);
+}
+.tag-blue {
+  background: var(--color-pale-blue);
+  color: var(--color-pale-blue-ink);
+}
+.tag-green {
+  background: var(--color-pale-green);
+  color: var(--color-pale-green-ink);
+}
+.tag-yellow {
+  background: var(--color-pale-yellow);
+  color: var(--color-pale-yellow-ink);
+}
+.tag-gray {
+  background: #f1f0ed;
+  color: #6e6d68;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--color-canvas);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+/* Quiet entry: fade + 12px rise, staggered via inline animation-delay. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Card hover: ultra-subtle lift only. */
+.lift {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.lift:hover {
+  border-color: #d8d7d2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 /* Visual trim timeline */
@@ -137,18 +203,18 @@ select:focus-visible,
   cursor: ew-resize;
 }
 .trim-handle:focus-visible {
-  outline: 2px solid rgb(0 113 227 / 0.7);
+  outline: 2px solid #111;
   outline-offset: 1px;
 }
 
-/* Sliders. The fill is painted with a gradient stopped at --fill, which the
-   component sets from the current value — no measuring, no reflow. */
+/* Range inputs: flat ink fill, hairline remainder, plain white thumb. */
 .slider {
-  -webkit-appearance: none;
-  appearance: none;
+  display: block;
   width: 100%;
-  height: 30px;
+  height: 28px;
   margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
   cursor: pointer;
   touch-action: pan-y;
@@ -157,76 +223,53 @@ select:focus-visible,
   outline: none;
 }
 .slider::-webkit-slider-runnable-track {
-  height: 10px;
+  height: 6px;
   border-radius: 999px;
   background: linear-gradient(
     to right,
-    #0071e3 0%,
-    #4aa3ff var(--fill, 50%),
-    rgb(0 0 0 / 0.09) var(--fill, 50%),
-    rgb(0 0 0 / 0.09) 100%
+    #111 0%,
+    #111 var(--fill, 50%),
+    #e8e7e3 var(--fill, 50%),
+    #e8e7e3 100%
   );
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1);
 }
 .slider::-moz-range-track {
-  height: 10px;
+  height: 6px;
   border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    #0071e3 0%,
-    #4aa3ff var(--fill, 50%),
-    rgb(0 0 0 / 0.09) var(--fill, 50%),
-    rgb(0 0 0 / 0.09) 100%
-  );
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1);
+  background: #e8e7e3;
 }
 .slider::-moz-range-progress {
-  height: 10px;
+  height: 6px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #4aa3ff, #0071e3);
+  background: #111;
 }
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 26px;
-  height: 26px;
-  margin-top: -8px;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
   border-radius: 999px;
   background: #fff;
-  border: 1px solid rgb(0 0 0 / 0.07);
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.28),
-    0 6px 14px -4px rgb(0 0 0 / 0.35);
-  transition:
-    transform 0.12s ease,
-    box-shadow 0.15s ease;
+  border: 1px solid #d8d7d2;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  transition: transform 0.12s ease;
 }
 .slider::-moz-range-thumb {
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   background: #fff;
-  border: 1px solid rgb(0 0 0 / 0.07);
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.28),
-    0 6px 14px -4px rgb(0 0 0 / 0.35);
+  border: 1px solid #d8d7d2;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
 }
 .slider:active::-webkit-slider-thumb {
-  transform: scale(1.14);
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.28),
-    0 8px 18px -4px rgb(0 0 0 / 0.4);
+  transform: scale(1.1);
 }
 .slider:focus-visible::-webkit-slider-thumb {
-  box-shadow:
-    0 0 0 4px rgb(0 113 227 / 0.28),
-    0 1px 2px rgb(0 0 0 / 0.28),
-    0 6px 14px -4px rgb(0 0 0 / 0.35);
+  box-shadow: 0 0 0 3px rgb(17 17 17 / 0.15);
 }
 .slider:focus-visible::-moz-range-thumb {
-  box-shadow:
-    0 0 0 4px rgb(0 113 227 / 0.28),
-    0 1px 2px rgb(0 0 0 / 0.28),
-    0 6px 14px -4px rgb(0 0 0 / 0.35);
+  box-shadow: 0 0 0 3px rgb(17 17 17 / 0.15);
 }
 
 @media (prefers-reduced-motion: reduce) {

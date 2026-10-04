@@ -56,22 +56,22 @@ export default function PwaStatus() {
       className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4"
     >
       {isOffline && (
-        <p className="pointer-events-auto rounded-full bg-neutral-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
+        <p className="pointer-events-auto rounded-full bg-[#111] px-4 py-2 font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-white">
           You&apos;re offline — everything still works
         </p>
       )}
       {offlineReady && !isOffline && (
-        <p className="pointer-events-auto rounded-full bg-neutral-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
-          Ready to work offline ✓
+        <p className="pointer-events-auto rounded-full bg-[#111] px-4 py-2 font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-white">
+          Ready to work offline
         </p>
       )}
       {needRefresh && (
-        <p className="pointer-events-auto flex items-center gap-3 rounded-[16px] bg-white py-2 pl-4 pr-2 text-[13px] font-medium text-neutral-800 shadow-lg ring-1 ring-black/10">
+        <p className="pointer-events-auto flex items-center gap-3 rounded-lg border border-[#eaeaea] bg-white py-2 pl-4 pr-2 text-[14px] font-medium text-[#111]">
           New version available
           <button
             type="button"
             onClick={reload}
-            className="btn-apple-primary rounded-full px-4 py-1.5 text-[13px] font-semibold"
+            className="btn-primary px-4 py-1.5 text-[14px]"
           >
             Reload
           </button>

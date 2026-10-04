@@ -17,26 +17,23 @@ export default function RecentJobs({
 }) {
   if (jobs.length === 0) return null;
   return (
-    <section className="card card-tint rounded-[22px] p-3">
+    <section className="panel p-6" aria-label="Recent jobs">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[13px] font-semibold tracking-tight text-neutral-800">Recent jobs</p>
+        <p className="section-label">Recent</p>
         <button
           type="button"
           onClick={onClear}
-          className="text-[12px] font-medium text-neutral-400 transition-colors hover:text-neutral-700"
+          className="text-[13px] font-medium text-[#a3a099] transition-colors hover:text-[#111]"
         >
           Clear
         </button>
       </div>
-      <ul className="mt-2 space-y-2">
+      <ul className="mt-1 divide-y divide-[#eaeaea]">
         {jobs.slice(0, 5).map((j) => (
-          <li
-            key={j.id}
-            className="flex items-center justify-between gap-2 rounded-[10px] bg-black/[0.04] px-2.5 py-2"
-          >
-            <div className="min-w-0 text-[12px] text-neutral-600">
-              <p className="truncate font-medium text-neutral-800">{j.fileName}</p>
-              <p className="tabular-nums">
+          <li key={j.id} className="flex items-center justify-between gap-3 py-3">
+            <div className="min-w-0 text-[13px] text-[#787774]">
+              <p className="truncate font-medium text-[#111]">{j.fileName}</p>
+              <p className="mt-0.5 font-mono text-[12px] tabular-nums">
                 {toolById(j.tool).label} · {formatBytes(j.inputBytes)} →{" "}
                 {formatBytes(j.outputBytes)}
               </p>
@@ -44,7 +41,7 @@ export default function RecentJobs({
             <button
               type="button"
               onClick={() => onReuse(j)}
-              className="btn-apple-secondary shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold text-neutral-700"
+              className="btn-secondary shrink-0 px-3 py-2 text-[13px] font-semibold"
             >
               Reuse
             </button>
