@@ -24,6 +24,7 @@ import {
 import {
   cancelEngine,
   ensureEngine,
+  engine,
   engineState,
   fileBytes,
   onProgress,
@@ -32,6 +33,7 @@ import {
 import { Field, Segmented, Switch, TextInput } from "./components/fields";
 import PwaStatus from "./components/PwaStatus";
 import TrimEditor, { type PickedKind } from "./components/TrimEditor";
+import ComparePreview from "./components/ComparePreview";
 
 type Opts = Record<ToolId, Record<string, string>>;
 type JobHistory = {
@@ -54,12 +56,36 @@ const INITIAL_OPTS: Opts = {
   convert: { format: "mp4", shorts: "off", targetMB: "off", audio: "keep" },
   crop: { ratio: "9:16", customW: "4", customH: "5", focalX: "50", focalY: "50" },
   thumbnail: { frameAt: "0:01" },
+  rotate: { dir: "cw" },
+  speed: { rate: "1.5" },
+  volume: { mode: "louder" },
+  fade: { which: "both", seconds: "1", durationSec: "" },
+  merge: {},
+  loop: { mode: "loop", times: "2" },
+  reverse: {},
+  resize: { maxH: "720" },
+  filter: { preset: "normal" },
+  frames: { every: "2", fmt: "png" },
+  image: { op: "compress", quality: "med", maxW: "orig", format: "webp" },
 };
 
 const MEDIA_EXTS = new Set([
   "mp4", "m4v", "mov", "mkv", "webm", "3gp", "avi", "mpg", "mpeg",
   "mp3", "m4a", "wav", "ogg", "oga", "opus", "aac", "flac",
+  "png", "jpg", "jpeg", "webp",
 ]);
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);
+
+function fileKind(f: File): "video" | "audio" | "image" {
+  if (f.type.startsWith("image/")) return "image";
+  if (f.type.startsWith("audio/")) return "audio";
+  if (f.type.startsWith("video/")) return "video";
+  const ext = extOf(f.name);
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (["mp3", "m4a", "wav", "ogg", "oga", "opus", "aac", "flac"].includes(ext)) return "audio";
+  return "video";
+}
 
 function loadOpts(): Opts {
   try {
@@ -73,6 +99,17 @@ function loadOpts(): Opts {
       convert: { ...INITIAL_OPTS.convert, ...(parsed.convert ?? {}) },
       crop: { ...INITIAL_OPTS.crop, ...(parsed.crop ?? {}) },
       thumbnail: { ...INITIAL_OPTS.thumbnail, ...(parsed.thumbnail ?? {}) },
+      rotate: { ...INITIAL_OPTS.rotate, ...(parsed.rotate ?? {}) },
+      speed: { ...INITIAL_OPTS.speed, ...(parsed.speed ?? {}) },
+      volume: { ...INITIAL_OPTS.volume, ...(parsed.volume ?? {}) },
+      fade: { ...INITIAL_OPTS.fade, ...(parsed.fade ?? {}) },
+      merge: { ...INITIAL_OPTS.merge, ...(parsed.merge ?? {}) },
+      loop: { ...INITIAL_OPTS.loop, ...(parsed.loop ?? {}) },
+      reverse: { ...INITIAL_OPTS.reverse, ...(parsed.reverse ?? {}) },
+      resize: { ...INITIAL_OPTS.resize, ...(parsed.resize ?? {}) },
+      filter: { ...INITIAL_OPTS.filter, ...(parsed.filter ?? {}) },
+      frames: { ...INITIAL_OPTS.frames, ...(parsed.frames ?? {}) },
+      image: { ...INITIAL_OPTS.image, ...(parsed.image ?? {}) },
     };
   } catch {
     return INITIAL_OPTS;
@@ -88,18 +125,32 @@ function loadHistory(): JobHistory[] {
 }
 
 function isMediaFile(f: File): boolean {
-  if (f.type.startsWith("video/") || f.type.startsWith("audio/")) return true;
-  if (!f.type) return MEDIA_EXTS.has(extOf(f.name));
+  if (f.type.startsWith("video/") || f.type.startsWith("audio/") || f.type.startsWith("image/"))
+    return true;
   return MEDIA_EXTS.has(extOf(f.name));
 }
 
 function pickedKindOf(f: File | null): PickedKind {
   if (!f) return null;
-  if (f.type.startsWith("video/")) return "video";
-  if (f.type.startsWith("audio/")) return "audio";
-  const ext = extOf(f.name);
-  if (["mp3", "m4a", "wav", "ogg", "oga", "opus", "aac", "flac"].includes(ext)) return "audio";
-  return "video";
+  const k = fileKind(f);
+  return k === "image" ? ("image" as PickedKind) : k;
+}
+
+function mimeForExt(ext: string): string | null {
+  switch (ext) {
+    case "mp4": return "video/mp4";
+    case "m4v": return "video/mp4";
+    case "webm": return "video/webm";
+    case "mp3": return "audio/mpeg";
+    case "m4a": return "audio/mp4";
+    case "wav": return "audio/wav";
+    case "gif": return "image/gif";
+    case "png": return "image/png";
+    case "jpg":
+    case "jpeg": return "image/jpeg";
+    case "webp": return "image/webp";
+    default: return null;
+  }
 }
 
 /** Did ffmpeg bail because the input has no such stream to filter? */
@@ -150,12 +201,13 @@ export default function App() {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultFile, setResultFile] = useState<File | null>(null);
   const [resultMeta, setResultMeta] = useState("");
-  const [resultKind, setResultKind] = useState<"video" | "audio" | "gif" | null>(null);
+  const [resultKind, setResultKind] = useState<"video" | "audio" | "gif" | "image" | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [rejected, setRejected] = useState<{ name: string; message: string } | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [jobHistory, setJobHistory] = useState<JobHistory[]>(loadHistory);
   const [shareLabel, setShareLabel] = useState("Share");
+  const [frameFiles, setFrameFiles] = useState<File[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickedRef = useRef<File | null>(null);
@@ -181,6 +233,7 @@ export default function App() {
     setResultFile(null);
     setResultKind(null);
     setResultMeta("");
+    setFrameFiles([]);
   }, []);
 
   /** Engine chatter is transient: show it while it matters, then get out of the way. */
@@ -218,7 +271,18 @@ export default function App() {
         clearResult();
         setRejected({
           name: f.name,
-          message: "That's not a media file. Pick a video or audio file.",
+          message: "That's not a media file. Pick a video, audio or image file.",
+        });
+        return;
+      }
+      const kind = fileKind(f);
+      const wantsImage = toolById(activeTool).acceptKind === "image";
+      if (wantsImage !== (kind === "image")) {
+        setRejected({
+          name: f.name,
+          message: wantsImage
+            ? "The Images tab works on pictures. Switch tools for video or audio."
+            : "That's a picture — use the Images tab for it.",
         });
         return;
       }
@@ -232,7 +296,7 @@ export default function App() {
       clearResult();
       setBatchQueue([]);
 
-      const dur = await probeDuration(f);
+      const dur = fileKind(f) === "image" ? null : await probeDuration(f);
       // Drop stale probes if the user picked another file meanwhile.
       if (pickedRef.current && pickedRef.current.name === f.name) {
         setProbing(false);
@@ -241,12 +305,16 @@ export default function App() {
           const t = prev.trim!;
           // A new file has its own timeline: stale cut marks would point at
           // the wrong moments.
-          if (t.end && !t.cuts) return prev;
-          return { ...prev, trim: { ...t, cuts: "", end: t.end || (dur != null ? fmtTrim(dur) : "") } };
+          const fade = {
+            ...prev.fade!,
+            durationSec: dur != null ? String(dur) : (prev.fade!.durationSec ?? ""),
+          };
+          if (t.end && !t.cuts) return { ...prev, fade };
+          return { ...prev, fade, trim: { ...t, cuts: "", end: t.end || (dur != null ? fmtTrim(dur) : "") } };
         });
       }
     },
-    [clearResult],
+    [clearResult, activeTool],
   );
 
   const handleFiles = useCallback(
@@ -323,6 +391,44 @@ export default function App() {
       const outName = `${OUT}.${wantExt}`;
       const data = await fileBytes(file);
 
+      // Burst tools (Frames) produce a numbered file set, not one output.
+      if (t.burst) {
+        const inst = engine();
+        await inst.writeFile(inName, data);
+        try {
+          const fmt = baseOpts.fmt === "jpg" ? "jpg" : "png";
+          const pattern = `frames_%03d.${fmt}`;
+          const code = await inst.exec(t.buildArgs(inName, pattern, baseOpts));
+          if (code !== 0) throw new Error(`ffmpeg exited with code ${code}`);
+          const nodes = await inst.listDir("/");
+          const names = nodes
+            .map((n) => n.name)
+            .filter((n) => n.startsWith("frames_") && n.endsWith(`.${fmt}`))
+            .sort();
+          if (names.length === 0) throw new Error("No frames came out");
+          const mime = fmt === "jpg" ? "image/jpeg" : "image/png";
+          const frames: File[] = [];
+          for (const name of names) {
+            const d = (await inst.readFile(name)) as Uint8Array;
+            frames.push(
+              new File([d.slice() as unknown as BlobPart], name, { type: mime }),
+            );
+            await inst.deleteFile(name).catch(() => {});
+          }
+          const total = frames.reduce((s, f) => s + f.size, 0);
+          return {
+            bytes: new Uint8Array(0),
+            mime,
+            outFile: frames[0]!,
+            frames,
+            totalBytes: total,
+            resolvedOpts: { ...baseOpts, hasAudio: "1" },
+          };
+        } finally {
+          await inst.deleteFile(inName).catch(() => {});
+        }
+      }
+
       // A source with no audio track has no [0:a] for a filtergraph to trim, so
       // the first attempt fails at graph setup (instantly) — retry without audio.
       const guesses = t.probeAudio ? ["1", "0"] : ["1"];
@@ -345,12 +451,12 @@ export default function App() {
       }
       if (!out) throw failure instanceof Error ? failure : new Error("ffmpeg failed");
 
-      const mime = t.outMime(resolvedOpts);
       const outFileName = t.outName(file.name, resolvedOpts);
+      const mime = mimeForExt(extOf(outFileName)) ?? t.outMime(resolvedOpts);
       const outFile = new File([out.slice() as unknown as BlobPart], outFileName, { type: mime });
       // Only `out` is safe to measure: writing the input into the engine detaches
       // its buffer, so `data.byteLength` reads 0 from here on.
-      return { bytes: out, mime, outFile, resolvedOpts };
+      return { bytes: out, mime, outFile, totalBytes: out.byteLength, resolvedOpts };
     },
     [pickedDuration],
   );
@@ -375,13 +481,87 @@ export default function App() {
       onProgress((p) => setProgress(p));
 
       const runList = [picked, ...batchQueue];
+
+      // Merge joins every file into a single output instead of looping per file.
+      if (t.multiInput && t.buildArgsList) {
+        const files = [picked, ...batchQueue];
+        if (files.length < 2) {
+          setFailure({
+            title: "Need one more file",
+            hint: "Merge joins the picked file with everything queued. Drop or pick more files to queue them.",
+            detail: "",
+          });
+          setPhase("idle");
+          return;
+        }
+        setDetail(`Merging ${files.length} files…`);
+        const exts = files.map((f) => extOf(f.name) || "mp4");
+        const inNames = files.map((_, i) => `in_${i}.${exts[i]}`);
+        const outName = `${OUT}.mp4`;
+        const datas = await Promise.all(files.map((f) => fileBytes(f)));
+        const baseOpts: Record<string, string> = {
+          ...o,
+          inputKind: "video",
+          durationSec: String(pickedDuration ?? ""),
+          inputCount: String(files.length),
+        };
+        const guesses = t.probeAudio ? ["1", "0"] : ["1"];
+        let resolvedOpts = { ...baseOpts, hasAudio: "1" };
+        let out: Uint8Array | null = null;
+        let mergeErr: unknown = null;
+        for (const g of guesses) {
+          resolvedOpts = { ...baseOpts, hasAudio: g };
+          try {
+            out = await runFFmpeg(
+              t.buildArgsList(inNames, outName, resolvedOpts),
+              inNames.map((name, i) => ({ name, data: datas[i]! })),
+            );
+            mergeErr = null;
+            break;
+          } catch (e) {
+            mergeErr = e;
+            if (g === "1" && missingAudioStream(e)) continue;
+            break;
+          }
+        }
+        if (!out) throw mergeErr instanceof Error ? mergeErr : new Error("ffmpeg failed");
+        const outFile = new File([out.slice() as unknown as BlobPart], t.outName(picked.name, resolvedOpts), { type: "video/mp4" });
+        setJobHistory((prev) => [
+          {
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            fileName: `${files.length} files`,
+            tool: activeTool,
+            opts: resolvedOpts,
+            inputBytes: files.reduce((s, f) => s + f.size, 0),
+            outputBytes: out.byteLength,
+            at: Date.now(),
+          },
+          ...prev,
+        ].slice(0, 10));
+        setResultFile(outFile);
+        setResultUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(outFile);
+        });
+        setResultKind("video");
+        setResultMeta(`· ${formatBytes(files.reduce((s, f) => s + f.size, 0))} → ${formatBytes(out.byteLength)}`);
+        setShareLabel("Share");
+        setProgress(1);
+        setBatchQueue([]);
+        requestAnimationFrame(() => {
+          resultWrapRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+        setPhase("idle");
+        return;
+      }
+
       let finalOut: File | null = null;
       for (let i = 0; i < runList.length; i++) {
         const file = runList[i]!;
         setDetail(
           runList.length > 1 ? `${i + 1} of ${runList.length} · ${file.name}` : file.name,
         );
-        const { bytes, mime, outFile, resolvedOpts } = await processOne(file, activeTool, o);
+        const { bytes, mime, outFile, totalBytes, frames, resolvedOpts } = await processOne(file, activeTool, o);
         setJobHistory((prev) => [
           {
             id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -389,7 +569,7 @@ export default function App() {
             tool: activeTool,
             opts: resolvedOpts,
             inputBytes: file.size,
-            outputBytes: bytes.byteLength,
+            outputBytes: totalBytes,
             at: Date.now(),
           },
           ...prev,
@@ -401,9 +581,20 @@ export default function App() {
           return url;
         });
         setResultFile(outFile);
-        const kind = mime.startsWith("audio/") ? "audio" : mime === "image/gif" ? "gif" : "video";
+        const kind = mime.startsWith("audio/")
+          ? "audio"
+          : mime === "image/gif"
+            ? "gif"
+            : mime.startsWith("image/")
+              ? "image"
+              : "video";
         setResultKind(kind);
-        setResultMeta(`· ${formatBytes(file.size)} → ${formatBytes(bytes.byteLength)}`);
+        setFrameFiles(frames ?? []);
+        setResultMeta(
+          frames && frames.length > 0
+            ? `· ${frames.length} frames · ${formatBytes(totalBytes)} total`
+            : `· ${formatBytes(file.size)} → ${formatBytes(totalBytes)}`,
+        );
       }
       if (finalOut) {
         setShareLabel("Share");
@@ -517,7 +708,8 @@ export default function App() {
     };
   }, []);
 
-  const runDisabled = running || !picked || validationError != null;
+  const runDisabled =
+    running || !picked || validationError != null || (activeTool === "merge" && batchQueue.length === 0);
   const runLabel = failure ? "Try again" : tool.action(opts[activeTool]!);
   const runningLabel =
     phase === "loading" ? "Loading engine…" : `Working…${detail ? ` · ${detail}` : ""}`;
@@ -547,6 +739,11 @@ export default function App() {
     return "same";
   })();
   const gifTooLong = activeTool === "convert" && opts.convert!.format === "gif" && (pickedDuration ?? 0) > GIF_MAX_SEC;
+
+  /** Compress (video or image) gets a Squoosh-style before/after slider. */
+  const compressCompare =
+    (activeTool === "compress" && pickedKind === "video") ||
+    (activeTool === "image" && opts.image!.op === "compress");
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-2 pt-4 sm:max-w-lg">
@@ -744,19 +941,51 @@ export default function App() {
         />
 
         {batchQueue.length > 0 && (
-          <div className="flex items-center gap-2 rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[12px] text-neutral-700">
-            <span className="min-w-0 flex-1">
-              <span className="font-semibold">{batchQueue.length + 1} files</span> queued — they run
-              one after another, and you get the last result.
-            </span>
-            <button
-              type="button"
-              onClick={() => setBatchQueue([])}
-              className="shrink-0 text-[12px] font-semibold text-accent"
-            >
-              Clear
-            </button>
+          <div className="rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[12px] text-neutral-700">
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1">
+                <span className="font-semibold">
+                  {activeTool === "merge" ? `${batchQueue.length + 1} files to merge` : `${batchQueue.length + 1} files queued`}
+                </span>{" "}
+                {activeTool === "merge"
+                  ? "— they join into one video, in this order."
+                  : "— they run one after another, and you get the last result."}
+              </span>
+              <button
+                type="button"
+                onClick={() => setBatchQueue([])}
+                className="shrink-0 text-[12px] font-semibold text-accent"
+              >
+                Clear
+              </button>
+            </div>
+            <ul className="mt-1.5 space-y-1">
+              {batchQueue.slice(0, 5).map((f, i) => (
+                <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-neutral-600">
+                    {i + 2}. {f.name} · {formatBytes(f.size)}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${f.name}`}
+                    onClick={() => setBatchQueue((prev) => prev.filter((_, j) => j !== i))}
+                    className="shrink-0 text-neutral-400 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+              {batchQueue.length > 5 && (
+                <li className="text-neutral-400">and {batchQueue.length - 5} more…</li>
+              )}
+            </ul>
           </div>
+        )}
+        {activeTool === "merge" && batchQueue.length === 0 && picked && (
+          <p className="rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[12px] leading-snug text-neutral-700">
+            Add more files to merge: drop them anywhere or pick again — they queue up and
+            join in order.
+          </p>
         )}
 
         <section className="cardd card-tintt roundedd-[22px] p-2">
@@ -1106,6 +1335,263 @@ export default function App() {
               )}
             </div>
           )}
+
+          {activeTool === "rotate" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Direction" group inline hint="Always re-encodes so the rotation sticks everywhere.">
+                <Segmented
+                  cols={3}
+                  value={opts.rotate!.dir!}
+                  options={[
+                    ["cw", "90° CW"],
+                    ["ccw", "90° CCW"],
+                    ["180", "180°"],
+                    ["hflip", "Flip ↔"],
+                    ["vflip", "Flip ↕"],
+                  ]}
+                  onChange={(v) => patchOpt("rotate", "dir", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "speed" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Speed" group inline hint="Audio tempo adjusts to match — no chipmunks.">
+                <Segmented
+                  cols={3}
+                  value={opts.speed!.rate!}
+                  options={[
+                    ["0.5", "0.5×"],
+                    ["0.75", "0.75×"],
+                    ["1.25", "1.25×"],
+                    ["1.5", "1.5×"],
+                    ["2", "2×"],
+                  ]}
+                  onChange={(v) => patchOpt("speed", "rate", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "volume" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Level" group inline hint="Loudness keeps the video stream untouched, so it stays fast.">
+                <Segmented
+                  cols={4}
+                  value={opts.volume!.mode!}
+                  options={[
+                    ["louder", "2× Louder"],
+                    ["quiet", "Half"],
+                    ["norm", "Normalize"],
+                    ["mute", "Mute"],
+                  ]}
+                  onChange={(v) => patchOpt("volume", "mode", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "fade" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Apply to" group inline>
+                <Segmented
+                  cols={3}
+                  value={opts.fade!.which!}
+                  options={[
+                    ["in", "Fade in"],
+                    ["out", "Fade out"],
+                    ["both", "Both"],
+                  ]}
+                  onChange={(v) => patchOpt("fade", "which", v)}
+                />
+              </Field>
+              <Field label="Duration" group inline>
+                <Segmented
+                  cols={3}
+                  value={opts.fade!.seconds!}
+                  options={[
+                    ["0.5", "0.5s"],
+                    ["1", "1s"],
+                    ["2", "2s"],
+                  ]}
+                  onChange={(v) => patchOpt("fade", "seconds", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "merge" && (
+            <p className="rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-neutral-600">
+              Everything is normalized to 720p30 + AAC so mismatched clips join cleanly.
+              Mixed-size videos get letterboxed, not stretched.
+            </p>
+          )}
+
+          {activeTool === "loop" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Mode" group inline>
+                <Segmented
+                  cols={2}
+                  value={opts.loop!.mode!}
+                  options={[
+                    ["loop", "Repeat"],
+                    ["boomerang", "Boomerang"],
+                  ]}
+                  onChange={(v) => patchOpt("loop", "mode", v)}
+                />
+              </Field>
+              {opts.loop!.mode !== "boomerang" && (
+                <Field label="Repeats" group inline>
+                  <Segmented
+                    cols={4}
+                    value={opts.loop!.times!}
+                    options={[
+                      ["2", "×2"],
+                      ["3", "×3"],
+                      ["4", "×4"],
+                      ["8", "×8"],
+                    ]}
+                    onChange={(v) => patchOpt("loop", "times", v)}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
+
+          {activeTool === "reverse" && (
+            <p className="rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-neutral-600">
+              The whole clip plays backwards, audio included. Long clips take a moment —
+              reverse buffers the entire video before writing.
+            </p>
+          )}
+
+          {activeTool === "resize" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Max height" group inline hint="Downscale only — small clips never get stretched bigger.">
+                <Segmented
+                  cols={4}
+                  value={opts.resize!.maxH!}
+                  options={[
+                    ["orig", "Original"],
+                    ["1080", "1080p"],
+                    ["720", "720p"],
+                    ["480", "480p"],
+                  ]}
+                  onChange={(v) => patchOpt("resize", "maxH", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "filter" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Look" group inline>
+                <Segmented
+                  cols={4}
+                  value={opts.filter!.preset!}
+                  options={[
+                    ["normal", "Normal"],
+                    ["vivid", "Vivid"],
+                    ["faded", "Faded"],
+                    ["bw", "B&W"],
+                    ["sepia", "Sepia"],
+                    ["warm", "Warm"],
+                    ["cool", "Cool"],
+                  ]}
+                  onChange={(v) => patchOpt("filter", "preset", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "frames" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Every" group inline>
+                <Segmented
+                  cols={4}
+                  value={opts.frames!.every!}
+                  options={[
+                    ["1", "1s"],
+                    ["2", "2s"],
+                    ["5", "5s"],
+                    ["10", "10s"],
+                  ]}
+                  onChange={(v) => patchOpt("frames", "every", v)}
+                />
+              </Field>
+              <Field label="Format" group inline>
+                <Segmented
+                  cols={2}
+                  value={opts.frames!.fmt!}
+                  options={[
+                    ["png", "PNG"],
+                    ["jpg", "JPG"],
+                  ]}
+                  onChange={(v) => patchOpt("frames", "fmt", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "image" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Do" group inline>
+                <Segmented
+                  cols={3}
+                  value={opts.image!.op!}
+                  options={[
+                    ["compress", "Compress"],
+                    ["resize", "Resize"],
+                    ["convert", "Convert"],
+                  ]}
+                  onChange={(v) => patchOpt("image", "op", v)}
+                />
+              </Field>
+              {opts.image!.op === "compress" && (
+                <Field label="Quality" group inline>
+                  <Segmented
+                    value={opts.image!.quality!}
+                    options={[
+                      ["high", "High"],
+                      ["med", "Medium"],
+                      ["low", "Low"],
+                    ]}
+                    onChange={(v) => patchOpt("image", "quality", v)}
+                  />
+                </Field>
+              )}
+              {opts.image!.op === "resize" && (
+                <Field label="Max width" group inline>
+                  <Segmented
+                    cols={4}
+                    value={opts.image!.maxW!}
+                    options={[
+                      ["orig", "Original"],
+                      ["1920", "1920"],
+                      ["1280", "1280"],
+                      ["800", "800"],
+                    ]}
+                    onChange={(v) => patchOpt("image", "maxW", v)}
+                  />
+                </Field>
+              )}
+              {opts.image!.op === "convert" && (
+                <Field label="Format" group inline>
+                  <Segmented
+                    cols={3}
+                    value={opts.image!.format!}
+                    options={[
+                      ["webp", "WebP"],
+                      ["jpg", "JPG"],
+                      ["png", "PNG"],
+                    ]}
+                    onChange={(v) => patchOpt("image", "format", v)}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
         </section>
 
         {failure && (
@@ -1133,15 +1619,55 @@ export default function App() {
               <p className="text-[13px] font-semibold tracking-tight text-neutral-800">Saved</p>
               <p className="truncate text-[12px] tabular-nums text-neutral-500">{resultMeta}</p>
             </div>
-            {resultKind === "video" && (
-              <video
-                src={resultUrl}
-                controls
-                playsInline
-                className="mt-3 max-h-64 w-full rounded-2xl bg-black"
-              />
+            {compressCompare && pickedUrl && (resultKind === "video" || resultKind === "image") ? (
+              <div className="mt-3">
+                <ComparePreview
+                  before={pickedUrl}
+                  after={resultUrl}
+                  kind={resultKind === "video" ? "video" : "image"}
+                />
+              </div>
+            ) : (
+              resultKind === "video" && (
+                <video
+                  src={resultUrl}
+                  controls
+                  playsInline
+                  className="mt-3 max-h-64 w-full rounded-2xl bg-black"
+                />
+              )
             )}
             {resultKind === "audio" && <audio src={resultUrl} controls className="mt-3 w-full" />}
+            {resultKind === "image" && !compressCompare && (
+              <img
+                src={resultUrl}
+                alt="Converted image preview"
+                className="mt-3 max-h-64 w-full rounded-2xl bg-black object-contain"
+              />
+            )}
+            {frameFiles.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[11px] font-medium text-neutral-500">
+                  Extracted frames — tap one to download it.
+                </p>
+                <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1">
+                  {frameFiles.map((f) => (
+                    <a
+                      key={f.name}
+                      href={URL.createObjectURL(f)}
+                      download={f.name}
+                      className="shrink-0"
+                    >
+                      <img
+                        src={URL.createObjectURL(f)}
+                        alt={f.name}
+                        className="h-16 w-auto rounded-[8px] border border-black/10 bg-black"
+                      />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
             {resultKind === "gif" && (
               <img
                 src={resultUrl}

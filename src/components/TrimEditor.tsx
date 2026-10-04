@@ -126,7 +126,7 @@ function paintWaveform(canvas: HTMLCanvasElement, peaks: number[]): void {
   }
 }
 
-export type PickedKind = "video" | "audio" | null;
+export type PickedKind = "video" | "audio" | "image" | null;
 export type TrimMode = "keep" | "remove";
 
 export default function TrimEditor({
