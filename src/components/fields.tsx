@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
 const labelCls = "text-[12px] font-medium leading-tight text-neutral-600";
 const hintCls = "text-[11px] leading-snug text-neutral-400";
@@ -126,6 +126,156 @@ export function Segmented({
         );
       })}
     </div>
+  );
+}
+
+/** Number without a trailing ".0" — 2 reads better on a control than 2.00. */
+export function trimNum(v: number): string {
+  return String(Math.round(v * 1000) / 1000);
+}
+
+/**
+ * The furniture around a slider: name on the left, current choice in an accent
+ * pill on the right, stop marks under the track, hint underneath.
+ */
+function SliderFrame({
+  label,
+  valueText,
+  hint,
+  ticks,
+  children,
+}: {
+  label: string;
+  valueText: string;
+  hint?: ReactNode;
+  /** Stop positions (0..1) dotted under the track. */
+  ticks?: number[];
+  children: ReactNode;
+}) {
+  return (
+    <div role="group" aria-label={label} className="rounded-[15px] bg-black/[0.035] px-3.5 py-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className={labelCls}>{label}</span>
+        <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[12px] font-semibold tabular-nums tracking-tight text-accent">
+          {valueText}
+        </span>
+      </div>
+      <div className="mt-1">{children}</div>
+      {ticks && ticks.length > 1 && (
+        // Inset by half a thumb so the end dots sit under the thumb centres.
+        <div aria-hidden="true" className="relative mx-[13px] h-1.5">
+          {ticks.map((p, i) => (
+            <span
+              key={i}
+              className="absolute top-0 size-1 -translate-x-1/2 rounded-full bg-black/20"
+              style={{ left: `${p * 100}%` }}
+            />
+          ))}
+        </div>
+      )}
+      {hint ? <p className={`mt-0.5 ${hintCls}`}>{hint}</p> : null}
+    </div>
+  );
+}
+
+const rangeCls =
+  "slider block w-full appearance-none bg-transparent focus:outline-none focus-visible:outline-none";
+
+/**
+ * Slider over a fixed set of choices. Every stop is reachable by dragging and
+ * the track shows where they are, which a text field can't do.
+ */
+export function Slider({
+  label,
+  value,
+  options,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: string;
+  options: readonly SegOption[];
+  onChange: (v: string) => void;
+  hint?: ReactNode;
+}) {
+  const idx = Math.max(0, options.findIndex(([v]) => v === value));
+  const [v, text] = options[idx]!;
+  const fill = options.length > 1 ? (idx / (options.length - 1)) * 100 : 0;
+  return (
+    <SliderFrame
+      label={label}
+      valueText={text ?? v}
+      hint={hint}
+      ticks={options.map((_, i) => (options.length > 1 ? i / (options.length - 1) : 0))}
+    >
+      <input
+        type="range"
+        className={rangeCls}
+        min={0}
+        max={Math.max(1, options.length - 1)}
+        step={1}
+        value={idx}
+        aria-label={label}
+        aria-valuetext={text ?? v}
+        style={{ "--fill": `${fill}%` } as CSSProperties}
+        onChange={(e) => {
+          const next = options[Number(e.target.value)];
+          if (next) onChange(next[0]);
+        }}
+      />
+    </SliderFrame>
+  );
+}
+
+/** Slider over a continuous number, for anything with a sensible middle. */
+export function RangeSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  hint,
+  format = trimNum,
+  ticks,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  hint?: ReactNode;
+  format?: (v: number) => string;
+  /** Values to dot under the track, e.g. the "1× is normal" landmarks. */
+  ticks?: number[];
+}) {
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  // A stored value can sit outside the range (a typed time, a duration that
+  // shrank) — clamp for the control so the thumb never renders off the track.
+  const v = Math.min(hi, Math.max(lo, Number.isFinite(value) ? value : lo));
+  const span = hi - lo || 1;
+  return (
+    <SliderFrame
+      label={label}
+      valueText={format(v)}
+      hint={hint}
+      ticks={ticks?.map((t) => (t - lo) / span)}
+    >
+      <input
+        type="range"
+        className={rangeCls}
+        min={lo}
+        max={hi}
+        step={step}
+        value={v}
+        aria-label={label}
+        aria-valuetext={format(v)}
+        style={{ "--fill": `${((v - lo) / span) * 100}%` } as CSSProperties}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </SliderFrame>
   );
 }
 

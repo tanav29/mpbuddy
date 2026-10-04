@@ -17,6 +17,7 @@ import {
   fmtTime,
   fmtTrim,
   formatBytes,
+  parseTime,
   probeDuration,
   shareFile,
   sizeWarning,
@@ -24,28 +25,52 @@ import {
 import {
   cancelEngine,
   ensureEngine,
+  engine,
   engineState,
   fileBytes,
   onProgress,
   runFFmpeg,
 } from "./ffmpeg";
-import { Field, Segmented, Switch, TextInput } from "./components/fields";
+import {
+  Field,
+  RangeSlider,
+  Segmented,
+  Slider,
+  Switch,
+  TextInput,
+  trimNum,
+} from "./components/fields";
 import PwaStatus from "./components/PwaStatus";
 import TrimEditor, { type PickedKind } from "./components/TrimEditor";
+import ComparePreview from "./components/ComparePreview";
+import ToolPicker from "./components/ToolPicker";
+import RecentJobs from "./components/RecentJobs";
+import {
+  clearHistory as forgetHistory,
+  loadHistory,
+  newJobId,
+  saveHistory,
+  type JobHistory,
+} from "./history";
 
 type Opts = Record<ToolId, Record<string, string>>;
-type JobHistory = {
-  id: string;
-  fileName: string;
-  tool: ToolId;
-  opts: Record<string, string>;
-  inputBytes: number;
-  outputBytes: number;
-  at: number;
-};
 /** "idle" = waiting for input, otherwise ffmpeg is busy. */
 type Phase = "idle" | "loading" | "working";
 type Failure = { title: string; hint: string | null; detail: string };
+
+/**
+ * Two pages, not one long scroll: the index lists every tool, the tool page
+ * does one job. Kept in the hash so the browser's back button walks back out
+ * of a tool instead of leaving the app.
+ */
+type View = { name: "home" } | { name: "tool"; id: ToolId };
+
+function readHash(): View {
+  const m = /^#\/tool\/([a-z0-9]+)$/.exec(window.location.hash);
+  const id = m?.[1] as ToolId | undefined;
+  if (id && TOOLS.some((t) => t.id === id)) return { name: "tool", id };
+  return { name: "home" };
+}
 
 const INITIAL_OPTS: Opts = {
   compress: { quality: "med", maxH: "720" },
@@ -54,12 +79,36 @@ const INITIAL_OPTS: Opts = {
   convert: { format: "mp4", shorts: "off", targetMB: "off", audio: "keep" },
   crop: { ratio: "9:16", customW: "4", customH: "5", focalX: "50", focalY: "50" },
   thumbnail: { frameAt: "0:01" },
+  rotate: { dir: "cw" },
+  speed: { rate: "1.5" },
+  volume: { mode: "louder" },
+  fade: { which: "both", seconds: "1", durationSec: "" },
+  merge: {},
+  loop: { mode: "loop", times: "2" },
+  reverse: {},
+  resize: { maxH: "720" },
+  filter: { preset: "normal" },
+  frames: { every: "2", fmt: "png" },
+  image: { op: "compress", quality: "med", maxW: "orig", format: "webp" },
 };
 
 const MEDIA_EXTS = new Set([
   "mp4", "m4v", "mov", "mkv", "webm", "3gp", "avi", "mpg", "mpeg",
   "mp3", "m4a", "wav", "ogg", "oga", "opus", "aac", "flac",
+  "png", "jpg", "jpeg", "webp",
 ]);
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);
+
+function fileKind(f: File): "video" | "audio" | "image" {
+  if (f.type.startsWith("image/")) return "image";
+  if (f.type.startsWith("audio/")) return "audio";
+  if (f.type.startsWith("video/")) return "video";
+  const ext = extOf(f.name);
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (["mp3", "m4a", "wav", "ogg", "oga", "opus", "aac", "flac"].includes(ext)) return "audio";
+  return "video";
+}
 
 function loadOpts(): Opts {
   try {
@@ -73,33 +122,50 @@ function loadOpts(): Opts {
       convert: { ...INITIAL_OPTS.convert, ...(parsed.convert ?? {}) },
       crop: { ...INITIAL_OPTS.crop, ...(parsed.crop ?? {}) },
       thumbnail: { ...INITIAL_OPTS.thumbnail, ...(parsed.thumbnail ?? {}) },
+      rotate: { ...INITIAL_OPTS.rotate, ...(parsed.rotate ?? {}) },
+      speed: { ...INITIAL_OPTS.speed, ...(parsed.speed ?? {}) },
+      volume: { ...INITIAL_OPTS.volume, ...(parsed.volume ?? {}) },
+      fade: { ...INITIAL_OPTS.fade, ...(parsed.fade ?? {}) },
+      merge: { ...INITIAL_OPTS.merge, ...(parsed.merge ?? {}) },
+      loop: { ...INITIAL_OPTS.loop, ...(parsed.loop ?? {}) },
+      reverse: { ...INITIAL_OPTS.reverse, ...(parsed.reverse ?? {}) },
+      resize: { ...INITIAL_OPTS.resize, ...(parsed.resize ?? {}) },
+      filter: { ...INITIAL_OPTS.filter, ...(parsed.filter ?? {}) },
+      frames: { ...INITIAL_OPTS.frames, ...(parsed.frames ?? {}) },
+      image: { ...INITIAL_OPTS.image, ...(parsed.image ?? {}) },
     };
   } catch {
     return INITIAL_OPTS;
   }
 }
 
-function loadHistory(): JobHistory[] {
-  try {
-    return (JSON.parse(localStorage.getItem("mpb-history") ?? "[]") as JobHistory[]).slice(0, 10);
-  } catch {
-    return [];
-  }
-}
-
 function isMediaFile(f: File): boolean {
-  if (f.type.startsWith("video/") || f.type.startsWith("audio/")) return true;
-  if (!f.type) return MEDIA_EXTS.has(extOf(f.name));
+  if (f.type.startsWith("video/") || f.type.startsWith("audio/") || f.type.startsWith("image/"))
+    return true;
   return MEDIA_EXTS.has(extOf(f.name));
 }
 
 function pickedKindOf(f: File | null): PickedKind {
   if (!f) return null;
-  if (f.type.startsWith("video/")) return "video";
-  if (f.type.startsWith("audio/")) return "audio";
-  const ext = extOf(f.name);
-  if (["mp3", "m4a", "wav", "ogg", "oga", "opus", "aac", "flac"].includes(ext)) return "audio";
-  return "video";
+  const k = fileKind(f);
+  return k === "image" ? ("image" as PickedKind) : k;
+}
+
+function mimeForExt(ext: string): string | null {
+  switch (ext) {
+    case "mp4": return "video/mp4";
+    case "m4v": return "video/mp4";
+    case "webm": return "video/webm";
+    case "mp3": return "audio/mpeg";
+    case "m4a": return "audio/mp4";
+    case "wav": return "audio/wav";
+    case "gif": return "image/gif";
+    case "png": return "image/png";
+    case "jpg":
+    case "jpeg": return "image/jpeg";
+    case "webp": return "image/webp";
+    default: return null;
+  }
 }
 
 /** Did ffmpeg bail because the input has no such stream to filter? */
@@ -135,7 +201,7 @@ function explainFailure(msg: string): Failure {
 }
 
 export default function App() {
-  const [activeTool, setActiveTool] = useState<ToolId>("compress");
+  const [view, setView] = useState<View>(readHash);
   const [opts, setOpts] = useState<Opts>(loadOpts);
   const [picked, setPicked] = useState<File | null>(null);
   const [pickedUrl, setPickedUrl] = useState<string | null>(null);
@@ -150,12 +216,13 @@ export default function App() {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultFile, setResultFile] = useState<File | null>(null);
   const [resultMeta, setResultMeta] = useState("");
-  const [resultKind, setResultKind] = useState<"video" | "audio" | "gif" | null>(null);
+  const [resultKind, setResultKind] = useState<"video" | "audio" | "gif" | "image" | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [rejected, setRejected] = useState<{ name: string; message: string } | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [jobHistory, setJobHistory] = useState<JobHistory[]>(loadHistory);
   const [shareLabel, setShareLabel] = useState("Share");
+  const [frameFiles, setFrameFiles] = useState<File[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickedRef = useRef<File | null>(null);
@@ -164,14 +231,39 @@ export default function App() {
 
   const running = phase !== "idle";
   const shareSupported = useMemo(() => canAttemptShare(), []);
+  // Only the tool page has one; the index shows every tool at once instead.
+  const onIndex = view.name === "home";
+  const activeTool: ToolId = view.name === "tool" ? view.id : "compress";
   const tool = toolById(activeTool);
   const pickedKind = pickedKindOf(picked);
   const validationError = tool.validate?.(opts[activeTool]!) ?? null;
   const engineReady = engineState().state === "ready";
 
+  const go = useCallback((next: View) => {
+    const hash = next.name === "home" ? "#/" : `#/tool/${next.id}`;
+    if (window.location.hash === hash) {
+      setView(next);
+      return;
+    }
+    // The hashchange listener below picks this up.
+    window.location.hash = hash;
+  }, []);
+
   const patchOpt = useCallback((id: ToolId, key: string, value: string) => {
     setOpts((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }));
   }, []);
+
+  useEffect(() => {
+    const onHash = (): void => setView(readHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // Every page change starts at the top — an editor scrolled halfway down is
+  // disorienting when you land on it fresh.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [view]);
 
   const clearResult = useCallback(() => {
     setResultUrl((prev) => {
@@ -181,7 +273,22 @@ export default function App() {
     setResultFile(null);
     setResultKind(null);
     setResultMeta("");
+    setFrameFiles([]);
   }, []);
+
+  const clearPicked = useCallback(() => {
+    setPickedUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPicked(null);
+    setPickedDuration(null);
+    setProbing(false);
+    setBatchQueue([]);
+    setRejected(null);
+    clearResult();
+    setFailure(null);
+  }, [clearResult]);
 
   /** Engine chatter is transient: show it while it matters, then get out of the way. */
   const noteEngine = useCallback((text: string, busy = false) => {
@@ -197,17 +304,25 @@ export default function App() {
 
   const handleSelectTool = useCallback(
     (id: ToolId) => {
-      setActiveTool(id);
+      go({ name: "tool", id });
       clearResult();
       setFailure(null);
+      // A picture can't feed a video tool, or the other way round. Better to
+      // drop it here than to fail at run time with a confusing error.
+      const cur = pickedRef.current;
+      const wantsImage = toolById(id).acceptKind === "image";
+      if (cur && wantsImage !== (fileKind(cur) === "image")) clearPicked();
     },
-    [clearResult],
+    [clearPicked, clearResult, go],
   );
 
   const handleFile = useCallback(
     async (f: File) => {
       setFailure(null);
       setRejected(null);
+      // A drop on the index would go nowhere, since only a tool page can show
+      // a file. Land on the tool that handles this kind.
+      if (onIndex) go({ name: "tool", id: fileKind(f) === "image" ? "image" : "compress" });
       if (!isMediaFile(f)) {
         setPickedUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
@@ -218,7 +333,18 @@ export default function App() {
         clearResult();
         setRejected({
           name: f.name,
-          message: "That's not a media file. Pick a video or audio file.",
+          message: "That's not a media file. Pick a video, audio or image file.",
+        });
+        return;
+      }
+      const kind = fileKind(f);
+      const wantsImage = toolById(activeTool).acceptKind === "image";
+      if (wantsImage !== (kind === "image")) {
+        setRejected({
+          name: f.name,
+          message: wantsImage
+            ? "Images only works on pictures. Pick a video or audio tool instead."
+            : "That's a picture — the Images tool is the one for it.",
         });
         return;
       }
@@ -232,7 +358,7 @@ export default function App() {
       clearResult();
       setBatchQueue([]);
 
-      const dur = await probeDuration(f);
+      const dur = fileKind(f) === "image" ? null : await probeDuration(f);
       // Drop stale probes if the user picked another file meanwhile.
       if (pickedRef.current && pickedRef.current.name === f.name) {
         setProbing(false);
@@ -241,12 +367,16 @@ export default function App() {
           const t = prev.trim!;
           // A new file has its own timeline: stale cut marks would point at
           // the wrong moments.
-          if (t.end && !t.cuts) return prev;
-          return { ...prev, trim: { ...t, cuts: "", end: t.end || (dur != null ? fmtTrim(dur) : "") } };
+          const fade = {
+            ...prev.fade!,
+            durationSec: dur != null ? String(dur) : (prev.fade!.durationSec ?? ""),
+          };
+          if (t.end && !t.cuts) return { ...prev, fade };
+          return { ...prev, fade, trim: { ...t, cuts: "", end: t.end || (dur != null ? fmtTrim(dur) : "") } };
         });
       }
     },
-    [clearResult],
+    [clearResult, activeTool, onIndex, go],
   );
 
   const handleFiles = useCallback(
@@ -323,6 +453,44 @@ export default function App() {
       const outName = `${OUT}.${wantExt}`;
       const data = await fileBytes(file);
 
+      // Burst tools (Frames) produce a numbered file set, not one output.
+      if (t.burst) {
+        const inst = engine();
+        await inst.writeFile(inName, data);
+        try {
+          const fmt = baseOpts.fmt === "jpg" ? "jpg" : "png";
+          const pattern = `frames_%03d.${fmt}`;
+          const code = await inst.exec(t.buildArgs(inName, pattern, baseOpts));
+          if (code !== 0) throw new Error(`ffmpeg exited with code ${code}`);
+          const nodes = await inst.listDir("/");
+          const names = nodes
+            .map((n) => n.name)
+            .filter((n) => n.startsWith("frames_") && n.endsWith(`.${fmt}`))
+            .sort();
+          if (names.length === 0) throw new Error("No frames came out");
+          const mime = fmt === "jpg" ? "image/jpeg" : "image/png";
+          const frames: File[] = [];
+          for (const name of names) {
+            const d = (await inst.readFile(name)) as Uint8Array;
+            frames.push(
+              new File([d.slice() as unknown as BlobPart], name, { type: mime }),
+            );
+            await inst.deleteFile(name).catch(() => {});
+          }
+          const total = frames.reduce((s, f) => s + f.size, 0);
+          return {
+            bytes: new Uint8Array(0),
+            mime,
+            outFile: frames[0]!,
+            frames,
+            totalBytes: total,
+            resolvedOpts: { ...baseOpts, hasAudio: "1" },
+          };
+        } finally {
+          await inst.deleteFile(inName).catch(() => {});
+        }
+      }
+
       // A source with no audio track has no [0:a] for a filtergraph to trim, so
       // the first attempt fails at graph setup (instantly) — retry without audio.
       const guesses = t.probeAudio ? ["1", "0"] : ["1"];
@@ -345,12 +513,12 @@ export default function App() {
       }
       if (!out) throw failure instanceof Error ? failure : new Error("ffmpeg failed");
 
-      const mime = t.outMime(resolvedOpts);
       const outFileName = t.outName(file.name, resolvedOpts);
+      const mime = mimeForExt(extOf(outFileName)) ?? t.outMime(resolvedOpts);
       const outFile = new File([out.slice() as unknown as BlobPart], outFileName, { type: mime });
       // Only `out` is safe to measure: writing the input into the engine detaches
       // its buffer, so `data.byteLength` reads 0 from here on.
-      return { bytes: out, mime, outFile, resolvedOpts };
+      return { bytes: out, mime, outFile, totalBytes: out.byteLength, resolvedOpts };
     },
     [pickedDuration],
   );
@@ -375,21 +543,95 @@ export default function App() {
       onProgress((p) => setProgress(p));
 
       const runList = [picked, ...batchQueue];
+
+      // Merge joins every file into a single output instead of looping per file.
+      if (t.multiInput && t.buildArgsList) {
+        const files = [picked, ...batchQueue];
+        if (files.length < 2) {
+          setFailure({
+            title: "Need one more file",
+            hint: "Merge joins the picked file with everything queued. Drop or pick more files to queue them.",
+            detail: "",
+          });
+          setPhase("idle");
+          return;
+        }
+        setDetail(`Merging ${files.length} files…`);
+        const exts = files.map((f) => extOf(f.name) || "mp4");
+        const inNames = files.map((_, i) => `in_${i}.${exts[i]}`);
+        const outName = `${OUT}.mp4`;
+        const datas = await Promise.all(files.map((f) => fileBytes(f)));
+        const baseOpts: Record<string, string> = {
+          ...o,
+          inputKind: "video",
+          durationSec: String(pickedDuration ?? ""),
+          inputCount: String(files.length),
+        };
+        const guesses = t.probeAudio ? ["1", "0"] : ["1"];
+        let resolvedOpts = { ...baseOpts, hasAudio: "1" };
+        let out: Uint8Array | null = null;
+        let mergeErr: unknown = null;
+        for (const g of guesses) {
+          resolvedOpts = { ...baseOpts, hasAudio: g };
+          try {
+            out = await runFFmpeg(
+              t.buildArgsList(inNames, outName, resolvedOpts),
+              inNames.map((name, i) => ({ name, data: datas[i]! })),
+            );
+            mergeErr = null;
+            break;
+          } catch (e) {
+            mergeErr = e;
+            if (g === "1" && missingAudioStream(e)) continue;
+            break;
+          }
+        }
+        if (!out) throw mergeErr instanceof Error ? mergeErr : new Error("ffmpeg failed");
+        const outFile = new File([out.slice() as unknown as BlobPart], t.outName(picked.name, resolvedOpts), { type: "video/mp4" });
+        setJobHistory((prev) => [
+          {
+            id: newJobId(),
+            fileName: `${files.length} files`,
+            tool: activeTool,
+            opts: resolvedOpts,
+            inputBytes: files.reduce((s, f) => s + f.size, 0),
+            outputBytes: out.byteLength,
+            at: Date.now(),
+          },
+          ...prev,
+        ].slice(0, 10));
+        setResultFile(outFile);
+        setResultUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(outFile);
+        });
+        setResultKind("video");
+        setResultMeta(`· ${formatBytes(files.reduce((s, f) => s + f.size, 0))} → ${formatBytes(out.byteLength)}`);
+        setShareLabel("Share");
+        setProgress(1);
+        setBatchQueue([]);
+        requestAnimationFrame(() => {
+          resultWrapRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+        setPhase("idle");
+        return;
+      }
+
       let finalOut: File | null = null;
       for (let i = 0; i < runList.length; i++) {
         const file = runList[i]!;
         setDetail(
           runList.length > 1 ? `${i + 1} of ${runList.length} · ${file.name}` : file.name,
         );
-        const { bytes, mime, outFile, resolvedOpts } = await processOne(file, activeTool, o);
+        const { bytes, mime, outFile, totalBytes, frames, resolvedOpts } = await processOne(file, activeTool, o);
         setJobHistory((prev) => [
           {
-            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            id: newJobId(),
             fileName: file.name,
             tool: activeTool,
             opts: resolvedOpts,
             inputBytes: file.size,
-            outputBytes: bytes.byteLength,
+            outputBytes: totalBytes,
             at: Date.now(),
           },
           ...prev,
@@ -401,9 +643,20 @@ export default function App() {
           return url;
         });
         setResultFile(outFile);
-        const kind = mime.startsWith("audio/") ? "audio" : mime === "image/gif" ? "gif" : "video";
+        const kind = mime.startsWith("audio/")
+          ? "audio"
+          : mime === "image/gif"
+            ? "gif"
+            : mime.startsWith("image/")
+              ? "image"
+              : "video";
         setResultKind(kind);
-        setResultMeta(`· ${formatBytes(file.size)} → ${formatBytes(bytes.byteLength)}`);
+        setFrameFiles(frames ?? []);
+        setResultMeta(
+          frames && frames.length > 0
+            ? `· ${frames.length} frames · ${formatBytes(totalBytes)} total`
+            : `· ${formatBytes(file.size)} → ${formatBytes(totalBytes)}`,
+        );
       }
       if (finalOut) {
         setShareLabel("Share");
@@ -433,19 +686,7 @@ export default function App() {
     });
   };
 
-  const handleRemoveFile = (): void => {
-    setPickedUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-    setPicked(null);
-    setPickedDuration(null);
-    setProbing(false);
-    setBatchQueue([]);
-    setRejected(null);
-    clearResult();
-    setFailure(null);
-  };
+  const handleRemoveFile = clearPicked;
 
   const handleShare = async (): Promise<void> => {
     if (!resultFile) return;
@@ -460,19 +701,13 @@ export default function App() {
   };
 
   const rerunFromHistory = (job: JobHistory): void => {
-    setActiveTool(job.tool);
     setOpts((prev) => ({ ...prev, [job.tool]: { ...prev[job.tool], ...job.opts } }));
-    clearResult();
-    setFailure(null);
+    handleSelectTool(job.tool);
   };
 
   const clearHistory = (): void => {
     setJobHistory([]);
-    try {
-      localStorage.removeItem("mpb-history");
-    } catch {
-      /* private mode */
-    }
+    forgetHistory();
   };
 
   useEffect(() => {
@@ -500,11 +735,7 @@ export default function App() {
   }, [opts]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("mpb-history", JSON.stringify(jobHistory.slice(0, 10)));
-    } catch {
-      /* noop */
-    }
+    saveHistory(jobHistory);
   }, [jobHistory]);
 
   // Revoke result URL on unmount.
@@ -517,7 +748,8 @@ export default function App() {
     };
   }, []);
 
-  const runDisabled = running || !picked || validationError != null;
+  const runDisabled =
+    running || !picked || validationError != null || (activeTool === "merge" && batchQueue.length === 0);
   const runLabel = failure ? "Try again" : tool.action(opts[activeTool]!);
   const runningLabel =
     phase === "loading" ? "Loading engine…" : `Working…${detail ? ` · ${detail}` : ""}`;
@@ -548,19 +780,67 @@ export default function App() {
   })();
   const gifTooLong = activeTool === "convert" && opts.convert!.format === "gif" && (pickedDuration ?? 0) > GIF_MAX_SEC;
 
+  /** Compress (video or image) gets a Squoosh-style before/after slider. */
+  const compressCompare =
+    (activeTool === "compress" && pickedKind === "video") ||
+    (activeTool === "image" && opts.image!.op === "compress");
+
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-2 pt-4 sm:max-w-lg">
       <header className="flex items-start justify-between gap-3 px-1">
-        <div className="min-w-0">
-          <h1 className="text-[19px] font-semibold leading-none tracking-tight">MpBuddy</h1>
-          <p className="mt-1.5 text-[12px] leading-snug text-neutral-500">
-            Everything runs on your device.
-          </p>
-        </div>
+        {view.name === "tool" ? (
+          // On a tool page the way out matters more than the brand mark.
+          <button
+            type="button"
+            onClick={() => go({ name: "home" })}
+            className="btn-apple-secondary -ml-1.5 flex min-h-10 shrink-0 items-center gap-1.5 rounded-full py-2 pl-2.5 pr-3.5 text-[13.5px] font-semibold tracking-tight text-neutral-800"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="size-4"
+            >
+              <path d="M15 6l-6 6l6 6" />
+            </svg>
+            All tools
+          </button>
+        ) : (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-[#2f8bff] to-[#0058c7] text-white shadow-[0_8px_16px_-6px_rgb(0_113_227/0.55)]"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="size-[18px]"
+              >
+                <path d="M6 4l14 8-14 8V4z" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-[19px] font-semibold leading-none tracking-tight">MpBuddy</h1>
+              <p className="mt-1 text-[11.5px] leading-snug text-neutral-500">
+                Everything runs on your device.
+              </p>
+            </div>
+          </div>
+        )}
         {engineNote && engineVisible && (
           <p
             role="status"
-            className="mt-0.5 flex shrink-0 items-center gap-1.5 rounded-full bg-black/[0.05] px-2.5 py-1 text-[11px] font-medium text-neutral-600"
+            className="mt-0.5 flex shrink-0 items-center gap-1.5 self-center rounded-full bg-black/[0.05] px-2.5 py-1 text-[11px] font-medium text-neutral-600"
           >
             <span
               className={
@@ -572,49 +852,59 @@ export default function App() {
         )}
       </header>
 
-      <nav
-        className="mt-4 grid grid-cols-3 gap-1 rounded-[20px] bg-black/[0.06] p-1 sm:grid-cols-6"
-        aria-label="Tools"
-      >
-        {TOOLS.map((t) => {
-          const active = t.id === activeTool;
-          return (
-            <button
-              key={t.id}
-              className={
-                (active
-                  ? "rounded-[15px] bg-white text-neutral-900 shadow-[0_1px_3px_rgb(0_0_0/0.12)]"
-                  : "rounded-[15px] text-neutral-500 transition-colors hover:text-neutral-800") +
-                " flex min-h-[62px] flex-col items-center justify-center gap-1 px-1 py-2 text-center"
-              }
-              aria-pressed={active}
-              onClick={() => handleSelectTool(t.id)}
+      {view.name === "home" ? (
+        <main className="mt-5 flex flex-col gap-4 pb-6">
+          <ToolPicker onOpen={handleSelectTool} />
+          <RecentJobs
+            jobs={jobHistory}
+            onReuse={rerunFromHistory}
+            onClear={clearHistory}
+          />
+          <details className="card card-tint rounded-[22px] p-3 text-[13px] leading-relaxed text-neutral-500">
+            <summary className="cursor-pointer font-medium text-neutral-700">
+              Limits &amp; privacy
+            </summary>
+            <ul className="mt-2.5 list-disc space-y-1.5 pl-4">
+              <li>
+                Everything runs locally via ffmpeg.wasm. No uploads, works offline after first
+                load.
+              </li>
+              <li>
+                Best for clips &lt; 2 min, ≤1080p, &lt;200 MB desktop / &lt;50 MB mobile. Bigger
+                files can crash mobile tabs.
+              </li>
+              <li>First run downloads a ~30 MB engine once, then it&apos;s cached.</li>
+            </ul>
+          </details>
+        </main>
+      ) : (
+        <>
+          <div className="mt-5 flex items-start gap-3 px-1">
+            <span
+              aria-hidden="true"
+              className="grid size-12 shrink-0 place-items-center rounded-[15px] bg-accent/10 text-accent"
             >
-              <span aria-hidden="true" className={active ? "text-accent" : ""}>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-5"
-                  dangerouslySetInnerHTML={{ __html: t.icon }}
-                />
-              </span>
-              <span className="text-[11px] font-medium tracking-tight">{t.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="size-6"
+                dangerouslySetInnerHTML={{ __html: tool.icon }}
+              />
+            </span>
+            <div className="min-w-0 pt-0.5">
+              <h1 className="text-[24px] font-semibold leading-tight tracking-tight">
+                {tool.label}
+              </h1>
+              <p className="mt-0.5 text-[13px] leading-snug text-neutral-500">{tool.hint}</p>
+            </div>
+          </div>
 
-      <div className="mt-5 px-1">
-        <h2 className="text-[22px] font-semibold leading-tight tracking-tight">{tool.label}</h2>
-        <p className="mt-0.5 text-[13px] leading-snug text-neutral-500">{tool.hint}</p>
-      </div>
-
-      <main className="mt-4 flex flex-col gap-2.5" aria-busy={running}>
+          <main className="mt-4 flex flex-col gap-2.5 pb-28" aria-busy={running}>
         {picked ? (
           <div className="card card-tint flex items-center gap-3 rounded-[22px] p-3">
             <span
@@ -744,48 +1034,79 @@ export default function App() {
         />
 
         {batchQueue.length > 0 && (
-          <div className="flex items-center gap-2 rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[12px] text-neutral-700">
-            <span className="min-w-0 flex-1">
-              <span className="font-semibold">{batchQueue.length + 1} files</span> queued — they run
-              one after another, and you get the last result.
-            </span>
-            <button
-              type="button"
-              onClick={() => setBatchQueue([])}
-              className="shrink-0 text-[12px] font-semibold text-accent"
-            >
-              Clear
-            </button>
+          <div className="rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[12px] text-neutral-700">
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1">
+                <span className="font-semibold">
+                  {activeTool === "merge" ? `${batchQueue.length + 1} files to merge` : `${batchQueue.length + 1} files queued`}
+                </span>{" "}
+                {activeTool === "merge"
+                  ? "— they join into one video, in this order."
+                  : "— they run one after another, and you get the last result."}
+              </span>
+              <button
+                type="button"
+                onClick={() => setBatchQueue([])}
+                className="shrink-0 text-[12px] font-semibold text-accent"
+              >
+                Clear
+              </button>
+            </div>
+            <ul className="mt-1.5 space-y-1">
+              {batchQueue.slice(0, 5).map((f, i) => (
+                <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-neutral-600">
+                    {i + 2}. {f.name} · {formatBytes(f.size)}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${f.name}`}
+                    onClick={() => setBatchQueue((prev) => prev.filter((_, j) => j !== i))}
+                    className="shrink-0 text-neutral-400 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+              {batchQueue.length > 5 && (
+                <li className="text-neutral-400">and {batchQueue.length - 5} more…</li>
+              )}
+            </ul>
           </div>
         )}
+        {activeTool === "merge" && batchQueue.length === 0 && picked && (
+          <p className="rounded-[14px] bg-accent/[0.07] px-3 py-2 text-[12px] leading-snug text-neutral-700">
+            Add more files to merge: drop them anywhere or pick again — they queue up and
+            join in order.
+          </p>
+        )}
 
-        <section className="cardd card-tintt roundedd-[22px] p-2">
+        <section className="card card-tint rounded-[22px] p-2">
           {activeTool === "compress" && (
             <div className="flex flex-col gap-2">
-              <Field label="Quality" group inline>
-                <Segmented
-                  value={opts.compress!.quality!}
-                  options={[
-                    ["high", "High"],
-                    ["med", "Medium"],
-                    ["low", "Low"],
-                  ]}
-                  onChange={(v) => patchOpt("compress", "quality", v)}
-                />
-              </Field>
-              <Field label="Max height" group inline>
-                <Segmented
-                  cols={4}
-                  value={opts.compress!.maxH!}
-                  options={[
-                    ["orig", "Original"],
-                    ["1080", "1080p"],
-                    ["720", "720p"],
-                    ["480", "480p"],
-                  ]}
-                  onChange={(v) => patchOpt("compress", "maxH", v)}
-                />
-              </Field>
+              <Slider
+                label="Quality"
+                value={opts.compress!.quality!}
+                options={[
+                  ["high", "High"],
+                  ["med", "Medium"],
+                  ["low", "Low"],
+                ]}
+                onChange={(v) => patchOpt("compress", "quality", v)}
+                hint="Left keeps more detail and makes a bigger file."
+              />
+              <Slider
+                label="Max height"
+                value={opts.compress!.maxH!}
+                options={[
+                  ["orig", "Original"],
+                  ["1080", "1080p"],
+                  ["720", "720p"],
+                  ["480", "480p"],
+                ]}
+                onChange={(v) => patchOpt("compress", "maxH", v)}
+                hint="Only ever scales down — a small clip is never stretched."
+              />
               {compressEstimate && (
                 <p className="text-[12px] leading-snug text-neutral-500">
                   Roughly{" "}
@@ -869,26 +1190,21 @@ export default function App() {
 
           {activeTool === "mp3" && (
             <div className="flex flex-col gap-2">
-              <Field
+              <Slider
                 label="Bitrate"
-                group
-                inline
+                value={opts.mp3!.bitrate!}
+                options={[
+                  ["128k", "128 kbps"],
+                  ["192k", "192 kbps"],
+                  ["256k", "256 kbps"],
+                ]}
+                onChange={(v) => patchOpt("mp3", "bitrate", v)}
                 hint={
                   pickedKind === "audio"
                     ? "Re-encodes the audio it already has."
                     : "192 kbps is about the ceiling where MP3 stops sounding worse than the source."
                 }
-              >
-                <Segmented
-                  value={opts.mp3!.bitrate!}
-                  options={[
-                    ["128k", "128 kbps"],
-                    ["192k", "192 kbps"],
-                    ["256k", "256 kbps"],
-                  ]}
-                  onChange={(v) => patchOpt("mp3", "bitrate", v)}
-                />
-              </Field>
+              />
             </div>
           )}
 
@@ -930,28 +1246,22 @@ export default function App() {
                       onChange={(v) => patchOpt("convert", "shorts", v)}
                     />
                   </Field>
-                  <Field
+                  <Slider
                     label="Target size"
-                    group
-                    inline
+                    value={opts.convert!.targetMB ?? "off"}
+                    options={[
+                      ["off", "Off"],
+                      ["10", "10 MB"],
+                      ["25", "25 MB"],
+                      ["50", "50 MB"],
+                    ]}
+                    onChange={(v) => patchOpt("convert", "targetMB", v)}
                     hint={
                       (opts.convert!.targetMB ?? "off") === "off"
-                        ? "Off keeps the quality setting ffmpeg picks for the format."
+                        ? "Off lets ffmpeg pick the quality for the format."
                         : "Caps the bitrate to land under this size. Duration is unknown until a file is picked."
                     }
-                  >
-                    <Segmented
-                      cols={4}
-                      value={opts.convert!.targetMB!}
-                      options={[
-                        ["off", "Off"],
-                        ["10", "<10 MB"],
-                        ["25", "<25 MB"],
-                        ["50", "<50 MB"],
-                      ]}
-                      onChange={(v) => patchOpt("convert", "targetMB", v)}
-                    />
-                  </Field>
+                  />
                   <Field label="Sound" group inline>
                     <Segmented
                       cols={2}
@@ -1075,34 +1385,279 @@ export default function App() {
 
           {activeTool === "thumbnail" && (
             <div className="flex flex-col gap-2">
-              <Field label="Frame at" inline hint="Seconds, or m:ss — 90 and 1:30 both work.">
-                <TextInput
-                  value={opts.thumbnail!.frameAt ?? "0:01"}
-                  placeholder="0:01"
-                  ariaLabel="Frame time"
-                  onChange={(v) => patchOpt("thumbnail", "frameAt", v)}
+              {pickedDuration != null ? (
+                <RangeSlider
+                  label="Frame at"
+                  value={parseTime(opts.thumbnail!.frameAt ?? "") ?? 0}
+                  min={0}
+                  max={Math.max(1, pickedDuration)}
+                  step={0.1}
+                  format={fmtTrim}
+                  onChange={(v) => patchOpt("thumbnail", "frameAt", fmtTrim(v))}
+                  hint="Drag along the clip, then run to save that frame as a JPG."
+                />
+              ) : (
+                <Field
+                  label="Frame at"
+                  inline
+                  hint="Pick a file and you can scrub its timeline here."
+                >
+                  <TextInput
+                    value={opts.thumbnail!.frameAt ?? "0:01"}
+                    placeholder="0:01"
+                    ariaLabel="Frame time"
+                    onChange={(v) => patchOpt("thumbnail", "frameAt", v)}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
+
+          {activeTool === "rotate" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Direction" group inline hint="Always re-encodes so the rotation sticks everywhere.">
+                <Segmented
+                  cols={3}
+                  value={opts.rotate!.dir!}
+                  options={[
+                    ["cw", "90° CW"],
+                    ["ccw", "90° CCW"],
+                    ["180", "180°"],
+                    ["hflip", "Flip ↔"],
+                    ["vflip", "Flip ↕"],
+                  ]}
+                  onChange={(v) => patchOpt("rotate", "dir", v)}
                 />
               </Field>
-              {pickedDuration != null && (
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    ["Start", 0],
-                    ["Middle", pickedDuration / 2],
-                    ["End", Math.max(0, pickedDuration - 0.5)],
-                  ].map(([label, at]) => (
-                    <button
-                      key={label as string}
-                      type="button"
-                      onClick={() => patchOpt("thumbnail", "frameAt", fmtTrim(at as number))}
-                      className="btn-apple-secondary flex min-h-10 flex-col items-center justify-center rounded-[12px] text-[13px] font-semibold text-neutral-800"
-                    >
-                      {label as string}
-                      <span className="text-[11px] font-medium tabular-nums text-neutral-500">
-                        {fmtTrim(at as number)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+            </div>
+          )}
+
+          {activeTool === "speed" && (
+            <div className="flex flex-col gap-2">
+              <RangeSlider
+                label="Speed"
+                value={Number(opts.speed!.rate ?? "1.5") || 1.5}
+                min={0.5}
+                max={3}
+                step={0.25}
+                format={(v) => `${trimNum(v)}×`}
+                ticks={[0.5, 1, 2]}
+                onChange={(v) => patchOpt("speed", "rate", trimNum(v))}
+                hint="1× is the original speed. Audio tempo follows it, so nobody sounds like a chipmunk."
+              />
+            </div>
+          )}
+
+          {activeTool === "volume" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Level" group inline hint="Loudness keeps the video stream untouched, so it stays fast.">
+                <Segmented
+                  cols={4}
+                  value={opts.volume!.mode!}
+                  options={[
+                    ["louder", "2× Louder"],
+                    ["quiet", "Half"],
+                    ["norm", "Normalize"],
+                    ["mute", "Mute"],
+                  ]}
+                  onChange={(v) => patchOpt("volume", "mode", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "fade" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Apply to" group inline>
+                <Segmented
+                  cols={3}
+                  value={opts.fade!.which!}
+                  options={[
+                    ["in", "Fade in"],
+                    ["out", "Fade out"],
+                    ["both", "Both"],
+                  ]}
+                  onChange={(v) => patchOpt("fade", "which", v)}
+                />
+              </Field>
+              <RangeSlider
+                label="Fade length"
+                value={Number(opts.fade!.seconds ?? "1") || 1}
+                min={0.2}
+                max={5}
+                step={0.1}
+                format={(v) => `${trimNum(v)}s`}
+                onChange={(v) => patchOpt("fade", "seconds", trimNum(v))}
+                hint="Half a second is a quick dip; a couple of seconds is a soft landing."
+              />
+            </div>
+          )}
+
+          {activeTool === "merge" && (
+            <p className="rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-neutral-600">
+              Everything is normalized to 720p30 + AAC so mismatched clips join cleanly.
+              Mixed-size videos get letterboxed, not stretched.
+            </p>
+          )}
+
+          {activeTool === "loop" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Mode" group inline>
+                <Segmented
+                  cols={2}
+                  value={opts.loop!.mode!}
+                  options={[
+                    ["loop", "Repeat"],
+                    ["boomerang", "Boomerang"],
+                  ]}
+                  onChange={(v) => patchOpt("loop", "mode", v)}
+                />
+              </Field>
+              {opts.loop!.mode !== "boomerang" && (
+                <Slider
+                  label="Repeats"
+                  value={opts.loop!.times ?? "2"}
+                  options={[
+                    ["2", "×2"],
+                    ["3", "×3"],
+                    ["4", "×4"],
+                    ["5", "×5"],
+                    ["6", "×6"],
+                    ["7", "×7"],
+                    ["8", "×8"],
+                  ]}
+                  onChange={(v) => patchOpt("loop", "times", v)}
+                  hint="Each repeat re-encodes, so a high count takes a while."
+                />
+              )}
+            </div>
+          )}
+
+          {activeTool === "reverse" && (
+            <p className="rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-neutral-600">
+              The whole clip plays backwards, audio included. Long clips take a moment —
+              reverse buffers the entire video before writing.
+            </p>
+          )}
+
+          {activeTool === "resize" && (
+            <div className="flex flex-col gap-2">
+              <Slider
+                label="Max height"
+                value={opts.resize!.maxH!}
+                options={[
+                  ["orig", "Original"],
+                  ["1080", "1080p"],
+                  ["720", "720p"],
+                  ["480", "480p"],
+                ]}
+                onChange={(v) => patchOpt("resize", "maxH", v)}
+                hint="Downscale only — small clips never get stretched bigger."
+              />
+            </div>
+          )}
+
+          {activeTool === "filter" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Look" group inline>
+                <Segmented
+                  cols={4}
+                  value={opts.filter!.preset!}
+                  options={[
+                    ["normal", "Normal"],
+                    ["vivid", "Vivid"],
+                    ["faded", "Faded"],
+                    ["bw", "B&W"],
+                    ["sepia", "Sepia"],
+                    ["warm", "Warm"],
+                    ["cool", "Cool"],
+                  ]}
+                  onChange={(v) => patchOpt("filter", "preset", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "frames" && (
+            <div className="flex flex-col gap-2">
+              <RangeSlider
+                label="Save a frame every"
+                value={Number(opts.frames!.every ?? "2") || 2}
+                min={0.5}
+                max={20}
+                step={0.5}
+                format={(v) => `${trimNum(v)}s`}
+                ticks={[1, 5, 10]}
+                onChange={(v) => patchOpt("frames", "every", trimNum(v))}
+                hint="One second on a 60-second clip gives you 60 images — they save as a numbered set."
+              />
+              <Field label="Format" group inline>
+                <Segmented
+                  cols={2}
+                  value={opts.frames!.fmt!}
+                  options={[
+                    ["png", "PNG"],
+                    ["jpg", "JPG"],
+                  ]}
+                  onChange={(v) => patchOpt("frames", "fmt", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "image" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Do" group inline>
+                <Segmented
+                  cols={3}
+                  value={opts.image!.op!}
+                  options={[
+                    ["compress", "Compress"],
+                    ["resize", "Resize"],
+                    ["convert", "Convert"],
+                  ]}
+                  onChange={(v) => patchOpt("image", "op", v)}
+                />
+              </Field>
+              {opts.image!.op === "compress" && (
+                <Slider
+                  label="Quality"
+                  value={opts.image!.quality!}
+                  options={[
+                    ["high", "High"],
+                    ["med", "Medium"],
+                    ["low", "Low"],
+                  ]}
+                  onChange={(v) => patchOpt("image", "quality", v)}
+                />
+              )}
+              {opts.image!.op === "resize" && (
+                <Slider
+                  label="Max width"
+                  value={opts.image!.maxW ?? "orig"}
+                  options={[
+                    ["orig", "Original"],
+                    ["1920", "1920"],
+                    ["1280", "1280"],
+                    ["800", "800"],
+                  ]}
+                  onChange={(v) => patchOpt("image", "maxW", v)}
+                  hint="Scales down only, so a small photo stays its own size."
+                />
+              )}
+              {opts.image!.op === "convert" && (
+                <Field label="Format" group inline>
+                  <Segmented
+                    cols={3}
+                    value={opts.image!.format!}
+                    options={[
+                      ["webp", "WebP"],
+                      ["jpg", "JPG"],
+                      ["png", "PNG"],
+                    ]}
+                    onChange={(v) => patchOpt("image", "format", v)}
+                  />
+                </Field>
               )}
             </div>
           )}
@@ -1133,15 +1688,55 @@ export default function App() {
               <p className="text-[13px] font-semibold tracking-tight text-neutral-800">Saved</p>
               <p className="truncate text-[12px] tabular-nums text-neutral-500">{resultMeta}</p>
             </div>
-            {resultKind === "video" && (
-              <video
-                src={resultUrl}
-                controls
-                playsInline
-                className="mt-3 max-h-64 w-full rounded-2xl bg-black"
-              />
+            {compressCompare && pickedUrl && (resultKind === "video" || resultKind === "image") ? (
+              <div className="mt-3">
+                <ComparePreview
+                  before={pickedUrl}
+                  after={resultUrl}
+                  kind={resultKind === "video" ? "video" : "image"}
+                />
+              </div>
+            ) : (
+              resultKind === "video" && (
+                <video
+                  src={resultUrl}
+                  controls
+                  playsInline
+                  className="mt-3 max-h-64 w-full rounded-2xl bg-black"
+                />
+              )
             )}
             {resultKind === "audio" && <audio src={resultUrl} controls className="mt-3 w-full" />}
+            {resultKind === "image" && !compressCompare && (
+              <img
+                src={resultUrl}
+                alt="Converted image preview"
+                className="mt-3 max-h-64 w-full rounded-2xl bg-black object-contain"
+              />
+            )}
+            {frameFiles.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[11px] font-medium text-neutral-500">
+                  Extracted frames — tap one to download it.
+                </p>
+                <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1">
+                  {frameFiles.map((f) => (
+                    <a
+                      key={f.name}
+                      href={URL.createObjectURL(f)}
+                      download={f.name}
+                      className="shrink-0"
+                    >
+                      <img
+                        src={URL.createObjectURL(f)}
+                        alt={f.name}
+                        className="h-16 w-auto rounded-[8px] border border-black/10 bg-black"
+                      />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
             {resultKind === "gif" && (
               <img
                 src={resultUrl}
@@ -1220,45 +1815,11 @@ export default function App() {
         </details>
 
         {jobHistory.length > 0 && (
-          <section className="card card-tint rounded-[22px] p-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[13px] font-semibold tracking-tight text-neutral-800">
-                Recent jobs
-              </p>
-              <button
-                type="button"
-                onClick={clearHistory}
-                className="text-[12px] font-medium text-neutral-400 hover:text-neutral-600"
-              >
-                Clear
-              </button>
-            </div>
-            <ul className="mt-2 space-y-2">
-              {jobHistory.slice(0, 5).map((j) => (
-                <li
-                  key={j.id}
-                  className="flex items-center justify-between gap-2 rounded-[10px] bg-black/[0.04] px-2.5 py-2"
-                >
-                  <div className="min-w-0 text-[12px] text-neutral-600">
-                    <p className="truncate font-medium text-neutral-800">{j.fileName}</p>
-                    <p className="tabular-nums">
-                      {toolById(j.tool).label} · {formatBytes(j.inputBytes)} →{" "}
-                      {formatBytes(j.outputBytes)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => rerunFromHistory(j)}
-                    className="btn-apple-secondary shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold text-neutral-700"
-                  >
-                    Reuse
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <RecentJobs jobs={jobHistory} onReuse={rerunFromHistory} onClear={clearHistory} />
         )}
       </main>
+        </>
+      )}
 
       <footer className="mt-8 flex flex-col items-center gap-2 border-t border-black/[0.06] pt-5 pb-2 text-center">
         <a
@@ -1276,7 +1837,9 @@ export default function App() {
       </footer>
 
       {/* The job bar: one surface that always holds the next useful action, so
-          nothing important sits below the fold on a phone. */}
+          nothing important sits below the fold on a phone. Tool pages only —
+          on the index the tiles are the actions. */}
+      {view.name === "tool" && (
       <div
         data-jobbar=""
         className="sticky bottom-0 z-30 -mx-4 mt-2 px-4 pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
@@ -1353,6 +1916,7 @@ export default function App() {
           )}
         </div>
       </div>
+      )}
 
       {dragActive && (
         <div
