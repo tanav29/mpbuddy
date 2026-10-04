@@ -748,11 +748,30 @@ export default function App() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-2 pt-4 sm:max-w-lg">
       <header className="flex items-start justify-between gap-3 px-1">
-        <div className="min-w-0">
-          <h1 className="text-[19px] font-semibold leading-none tracking-tight">MpBuddy</h1>
-          <p className="mt-1.5 text-[12px] leading-snug text-neutral-500">
-            Everything runs on your device.
-          </p>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            aria-hidden="true"
+            className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-[#2f8bff] to-[#0058c7] text-white shadow-[0_8px_16px_-6px_rgb(0_113_227/0.55)]"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-[18px]"
+            >
+              <path d="M6 4l14 8-14 8V4z" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-[19px] font-semibold leading-none tracking-tight">MpBuddy</h1>
+            <p className="mt-1 text-[11.5px] leading-snug text-neutral-500">
+              Everything runs on your device.
+            </p>
+          </div>
         </div>
         {engineNote && engineVisible && (
           <p
@@ -769,25 +788,21 @@ export default function App() {
         )}
       </header>
 
-      <nav
-        className="mt-4 grid grid-cols-3 gap-1 rounded-[20px] bg-black/[0.06] p-1 sm:grid-cols-6"
-        aria-label="Tools"
-      >
+      <nav className="mt-4 flex flex-wrap gap-1.5" aria-label="Tools">
         {TOOLS.map((t) => {
           const active = t.id === activeTool;
           return (
             <button
               key={t.id}
               className={
-                (active
-                  ? "rounded-[15px] bg-white text-neutral-900 shadow-[0_1px_3px_rgb(0_0_0/0.12)]"
-                  : "rounded-[15px] text-neutral-500 transition-colors hover:text-neutral-800") +
-                " flex min-h-[62px] flex-col items-center justify-center gap-1 px-1 py-2 text-center"
+                active
+                  ? "flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-semibold text-white shadow-[0_6px_14px_-6px_rgb(0_0_0/0.5)]"
+                  : "flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-white/70 px-3 py-1.5 text-[12px] font-medium text-neutral-600 transition-colors hover:bg-white hover:text-neutral-900"
               }
               aria-pressed={active}
               onClick={() => handleSelectTool(t.id)}
             >
-              <span aria-hidden="true" className={active ? "text-accent" : ""}>
+              <span aria-hidden="true" className={active ? "text-[#7cc4ff]" : "text-neutral-400"}>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -796,11 +811,11 @@ export default function App() {
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="size-5"
+                  className="size-3.5"
                   dangerouslySetInnerHTML={{ __html: t.icon }}
                 />
               </span>
-              <span className="text-[11px] font-medium tracking-tight">{t.label}</span>
+              {t.label}
             </button>
           );
         })}
@@ -811,7 +826,7 @@ export default function App() {
         <p className="mt-0.5 text-[13px] leading-snug text-neutral-500">{tool.hint}</p>
       </div>
 
-      <main className="mt-4 flex flex-col gap-2.5" aria-busy={running}>
+      <main className="mt-4 flex flex-col gap-2.5 pb-28" aria-busy={running}>
         {picked ? (
           <div className="card card-tint flex items-center gap-3 rounded-[22px] p-3">
             <span
@@ -988,7 +1003,7 @@ export default function App() {
           </p>
         )}
 
-        <section className="cardd card-tintt roundedd-[22px] p-2">
+        <section className="card card-tint rounded-[22px] p-2">
           {activeTool === "compress" && (
             <div className="flex flex-col gap-2">
               <Field label="Quality" group inline>

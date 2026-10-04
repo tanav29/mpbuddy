@@ -29,8 +29,11 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-feature-settings: "cv11", "ss01";
-  background: var(--bg);
   color: var(--fg);
+  background:
+    radial-gradient(1100px 520px at 85% -8%, rgb(0 113 227 / 0.07), transparent 60%),
+    radial-gradient(800px 480px at -10% 0%, rgb(255 158 44 / 0.05), transparent 55%),
+    var(--bg);
 }
 
 input,
