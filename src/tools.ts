@@ -29,9 +29,28 @@ export type ToolId =
   | "frames"
   | "image";
 
+/** Index-page section a tool is filed under. */
+export type ToolGroupId = "share" | "cut" | "look" | "sound" | "still";
+
+/** Ordered sections for the tools index — one short line each, nothing more. */
+export const TOOL_GROUPS: { id: ToolGroupId; title: string }[] = [
+  { id: "share", title: "Shrink & share" },
+  { id: "cut", title: "Cut & stitch" },
+  { id: "look", title: "Crop & style" },
+  { id: "sound", title: "Sound" },
+  { id: "still", title: "Stills" },
+];
+
 export interface ToolDef {
   id: ToolId;
   label: string;
+  /** Which index section this tool is filed under. */
+  group: ToolGroupId;
+  /**
+   * Extra words the index search should match. People search for the job
+   * ("shrink", "vertical", "music"), never for our option names.
+   */
+  keywords: string[];
   /** Inline Tabler icon SVG inner markup (24x24 outline paths). Rendered with stroke="currentColor". */
   icon: string;
   hint: string;
@@ -220,6 +239,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "compress",
     label: "Compress",
+    group: "share",
+    keywords: ["shrink", "smaller", "reduce", "size", "lighter", "whatsapp", "instagram"],
     icon: '<path d="M6 20.735a2 2 0 0 1 -1 -1.735v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2h-1" /><path d="M11 17a2 2 0 0 1 2 2v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1v-2a2 2 0 0 1 2 -2" /><path d="M11 5l-1 0" /><path d="M13 7l-1 0" /><path d="M11 9l-1 0" /><path d="M13 11l-1 0" /><path d="M11 13l-1 0" /><path d="M13 15l-1 0" />',
     hint: "Shrink video to H.264 MP4 for easy sharing.",
     action: () => "Compress video",
@@ -238,6 +259,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "trim",
     label: "Trim",
+    group: "cut",
+    keywords: ["cut", "clip", "segment", "start", "end", "time", "range", "shorten", "remove"],
     icon: '<path d="M3 7a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M3 17a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M8.6 8.6l10.4 10.4" /><path d="M8.6 15.4l10.4 -10.4" />',
     hint: "Keep a range, or cut sections out of the middle.",
     action: (o) => (trimMode(o) === "remove" ? "Cut these sections out" : "Keep this range"),
@@ -293,6 +316,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "mp3",
     label: "MP3",
+    group: "share",
+    keywords: ["audio", "extract", "sound", "music", "song", "voice", "m4a", "wav"],
     icon: '<path d="M3 17a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /><path d="M13 17a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /><path d="M9 17v-13h10v13" /><path d="M9 8h10" />',
     hint: "Extract audio from video as MP3.",
     action: () => "Extract MP3",
@@ -306,6 +331,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "convert",
     label: "Convert",
+    group: "share",
+    keywords: ["format", "transcode", "mp4", "webm", "mp3", "gif", "vertical", "9:16", "shorts", "size"],
     icon: '<path d="M4 12v-3a3 3 0 0 1 3 -3h13m-3 -3l3 3l-3 3" /><path d="M20 12v3a3 3 0 0 1 -3 3h-13m3 3l-3 -3l3 -3" />',
     hint: "MP4, WebM, MP3 or GIF — plus vertical 9:16 and target size.",
     action: (o) => {
@@ -350,6 +377,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "crop",
     label: "Crop",
+    group: "look",
+    keywords: ["aspect", "ratio", "vertical", "9:16", "square", "shorts", "reels", "tiktok", "imax", "framing"],
     icon: '<path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M18 22v-14a2 2 0 0 0 -2 -2h-14" />',
     hint: "Center-crop to Shorts, Square, IMAX & more — no stretch.",
     action: (o) => {
@@ -380,6 +409,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "thumbnail",
     label: "Thumbnail",
+    group: "share",
+    keywords: ["frame", "cover", "still", "screenshot", "poster", "jpg", "grab"],
     icon: '<path d="M5 4m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z" /><path d="M10 9l5 3l-5 3z" />',
     hint: "Export a frame as JPG for thumbnails and covers.",
     action: () => "Export frame as JPG",
@@ -397,6 +428,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "rotate",
     label: "Rotate",
+    group: "look",
+    keywords: ["turn", "sideways", "orientation", "flip", "upside", "landscape", "portrait"],
     icon: '<path d="M17 2l4 4l-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4l4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" />',
     hint: "Turn a phone video sideways-up, or flip it.",
     action: (o) =>
@@ -418,6 +451,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "speed",
     label: "Speed",
+    group: "sound",
+    keywords: ["tempo", "fast", "slow", "faster", "slower", "playback", "2x", "slow motion"],
     icon: '<path d="M5 19a9 9 0 1 1 14 0" /><path d="M12 13l3.5-3.5" />',
     hint: "Faster or slower — audio tempo follows automatically.",
     action: (o) => `Set speed to ${o.rate ?? "1.5"}×`,
@@ -445,6 +480,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "volume",
     label: "Volume",
+    group: "sound",
+    keywords: ["loud", "quiet", "louder", "quieter", "normalize", "mute", "silence", "gain", "hearing"],
     icon: '<path d="M15 8a5 5 0 0 1 0 8" /><path d="M17.7 5a9 9 0 0 1 0 14" /><path d="M6 15h-2a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h2l3.5-4.5a.8.8 0 0 1 1.5.5v13a.8.8 0 0 1-1.5.5L6 15" />',
     hint: "Turn audio up or down, normalize loudness, or strip it.",
     action: (o) =>
@@ -467,6 +504,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "fade",
     label: "Fade",
+    group: "sound",
+    keywords: ["fade in", "fade out", "transition", "soft", "start", "end", "dissolve"],
     icon: '<path d="M4 20c6 0 8-16 16-16" />',
     hint: "Fade the picture and sound in, out, or both.",
     action: (o) => `Fade ${o.which === "in" ? "in" : o.which === "out" ? "out" : "in & out"}`,
@@ -512,6 +551,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "merge",
     label: "Merge",
+    group: "cut",
+    keywords: ["join", "combine", "stitch", "together", "playlist", "concatenate", "parts"],
     icon: '<circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="8" r="2.5" /><path d="M6 8.5v7" /><path d="M18 10.5c0 4-6 3.5-10.6 5.4" />',
     hint: "Join the picked file and queued files into one video.",
     action: (o) => `Merge ${o.inputCount ?? "2"} files`,
@@ -546,6 +587,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "loop",
     label: "Loop",
+    group: "cut",
+    keywords: ["repeat", "boomerang", "ping pong", "bounce", "again", "times"],
     icon: '<path d="M17 2l4 4l-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4l4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" />',
     hint: "Repeat a clip, or play it forward then backward (boomerang).",
     action: (o) => (o.mode === "boomerang" ? "Make a boomerang" : `Loop ${o.times ?? "2"}×`),
@@ -596,6 +639,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "reverse",
     label: "Reverse",
+    group: "cut",
+    keywords: ["backwards", "rewind", "flip", "play in reverse", "rewind"],
     icon: '<path d="M11 19l-9-7l9-7v14z" /><path d="M22 19l-9-7l9-7v14z" />',
     hint: "Play the whole clip backwards.",
     action: () => "Reverse video",
@@ -623,6 +668,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "resize",
     label: "Resize",
+    group: "look",
+    keywords: ["scale", "size", "resolution", "dimensions", "height", "hd", "4k", "downscale"],
     icon: '<path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" />',
     hint: "Set the height — width follows, never stretched.",
     action: (o) => (o.maxH === "orig" ? "Re-encode as-is" : `Resize to ${o.maxH ?? "720"}p`),
@@ -640,6 +687,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "filter",
     label: "Filter",
+    group: "look",
+    keywords: ["look", "color", "colour", "grayscale", "black and white", "sepia", "vivid", "warm", "cool", "style"],
     icon: '<path d="M4 8h10" /><path d="M18 8h2" /><circle cx="16" cy="8" r="2" /><path d="M4 16h4" /><path d="M12 16h8" /><circle cx="10" cy="16" r="2" />',
     hint: "Grayscale, sepia, warm, cool and more.",
     action: (o) => `Apply ${o.preset ?? "normal"} filter`,
@@ -669,6 +718,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "frames",
     label: "Frames",
+    group: "look",
+    keywords: ["screenshot", "burst", "sequence", "png", "every", "seconds", "gallery", "photos"],
     icon: '<rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16" /><path d="M17 4v16" /><path d="M3 9h4" /><path d="M3 15h4" /><path d="M17 9h4" /><path d="M17 15h4" />',
     hint: "Save frames every few seconds as PNG or JPG.",
     action: (o) => `Extract frames as ${o.fmt === "jpg" ? "JPG" : "PNG"}`,
@@ -686,6 +737,8 @@ export const TOOLS: ToolDef[] = [
   {
     id: "image",
     label: "Images",
+    group: "still",
+    keywords: ["picture", "photo", "png", "jpg", "jpeg", "webp", "compress", "resize", "convert", "still"],
     icon: '<rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-5-5L5 21" />',
     hint: "Compress, resize and convert PNG / JPG / WebP.",
     acceptKind: "image",
@@ -718,4 +771,18 @@ export const TOOLS: ToolDef[] = [
 export { IN, OUT };
 export function toolById(id: ToolId): ToolDef {
   return TOOLS.find((t) => t.id === id) ?? TOOLS[0]!;
+}
+
+/**
+ * Index search. Every whitespace-separated term has to land somewhere, so
+ * "vertical gif" narrows instead of widening. Matches the label people see,
+ * the hint under it, and the extra keywords for the words we don't print.
+ */
+export function searchTools(query: string): ToolDef[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return TOOLS;
+  return TOOLS.filter((t) => {
+    const hay = `${t.label} ${t.hint} ${t.keywords.join(" ")}`.toLowerCase();
+    return terms.every((term) => hay.includes(term));
+  });
 }

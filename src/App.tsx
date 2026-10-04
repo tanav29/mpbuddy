@@ -17,6 +17,7 @@ import {
   fmtTime,
   fmtTrim,
   formatBytes,
+  parseTime,
   probeDuration,
   shareFile,
   sizeWarning,
@@ -30,24 +31,46 @@ import {
   onProgress,
   runFFmpeg,
 } from "./ffmpeg";
-import { Field, Segmented, Switch, TextInput } from "./components/fields";
+import {
+  Field,
+  RangeSlider,
+  Segmented,
+  Slider,
+  Switch,
+  TextInput,
+  trimNum,
+} from "./components/fields";
 import PwaStatus from "./components/PwaStatus";
 import TrimEditor, { type PickedKind } from "./components/TrimEditor";
 import ComparePreview from "./components/ComparePreview";
+import ToolPicker from "./components/ToolPicker";
+import RecentJobs from "./components/RecentJobs";
+import {
+  clearHistory as forgetHistory,
+  loadHistory,
+  newJobId,
+  saveHistory,
+  type JobHistory,
+} from "./history";
 
 type Opts = Record<ToolId, Record<string, string>>;
-type JobHistory = {
-  id: string;
-  fileName: string;
-  tool: ToolId;
-  opts: Record<string, string>;
-  inputBytes: number;
-  outputBytes: number;
-  at: number;
-};
 /** "idle" = waiting for input, otherwise ffmpeg is busy. */
 type Phase = "idle" | "loading" | "working";
 type Failure = { title: string; hint: string | null; detail: string };
+
+/**
+ * Two pages, not one long scroll: the index lists every tool, the tool page
+ * does one job. Kept in the hash so the browser's back button walks back out
+ * of a tool instead of leaving the app.
+ */
+type View = { name: "home" } | { name: "tool"; id: ToolId };
+
+function readHash(): View {
+  const m = /^#\/tool\/([a-z0-9]+)$/.exec(window.location.hash);
+  const id = m?.[1] as ToolId | undefined;
+  if (id && TOOLS.some((t) => t.id === id)) return { name: "tool", id };
+  return { name: "home" };
+}
 
 const INITIAL_OPTS: Opts = {
   compress: { quality: "med", maxH: "720" },
@@ -116,14 +139,6 @@ function loadOpts(): Opts {
   }
 }
 
-function loadHistory(): JobHistory[] {
-  try {
-    return (JSON.parse(localStorage.getItem("mpb-history") ?? "[]") as JobHistory[]).slice(0, 10);
-  } catch {
-    return [];
-  }
-}
-
 function isMediaFile(f: File): boolean {
   if (f.type.startsWith("video/") || f.type.startsWith("audio/") || f.type.startsWith("image/"))
     return true;
@@ -186,7 +201,7 @@ function explainFailure(msg: string): Failure {
 }
 
 export default function App() {
-  const [activeTool, setActiveTool] = useState<ToolId>("compress");
+  const [view, setView] = useState<View>(readHash);
   const [opts, setOpts] = useState<Opts>(loadOpts);
   const [picked, setPicked] = useState<File | null>(null);
   const [pickedUrl, setPickedUrl] = useState<string | null>(null);
@@ -216,14 +231,39 @@ export default function App() {
 
   const running = phase !== "idle";
   const shareSupported = useMemo(() => canAttemptShare(), []);
+  // Only the tool page has one; the index shows every tool at once instead.
+  const onIndex = view.name === "home";
+  const activeTool: ToolId = view.name === "tool" ? view.id : "compress";
   const tool = toolById(activeTool);
   const pickedKind = pickedKindOf(picked);
   const validationError = tool.validate?.(opts[activeTool]!) ?? null;
   const engineReady = engineState().state === "ready";
 
+  const go = useCallback((next: View) => {
+    const hash = next.name === "home" ? "#/" : `#/tool/${next.id}`;
+    if (window.location.hash === hash) {
+      setView(next);
+      return;
+    }
+    // The hashchange listener below picks this up.
+    window.location.hash = hash;
+  }, []);
+
   const patchOpt = useCallback((id: ToolId, key: string, value: string) => {
     setOpts((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }));
   }, []);
+
+  useEffect(() => {
+    const onHash = (): void => setView(readHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // Every page change starts at the top — an editor scrolled halfway down is
+  // disorienting when you land on it fresh.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [view]);
 
   const clearResult = useCallback(() => {
     setResultUrl((prev) => {
@@ -235,6 +275,20 @@ export default function App() {
     setResultMeta("");
     setFrameFiles([]);
   }, []);
+
+  const clearPicked = useCallback(() => {
+    setPickedUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPicked(null);
+    setPickedDuration(null);
+    setProbing(false);
+    setBatchQueue([]);
+    setRejected(null);
+    clearResult();
+    setFailure(null);
+  }, [clearResult]);
 
   /** Engine chatter is transient: show it while it matters, then get out of the way. */
   const noteEngine = useCallback((text: string, busy = false) => {
@@ -250,17 +304,25 @@ export default function App() {
 
   const handleSelectTool = useCallback(
     (id: ToolId) => {
-      setActiveTool(id);
+      go({ name: "tool", id });
       clearResult();
       setFailure(null);
+      // A picture can't feed a video tool, or the other way round. Better to
+      // drop it here than to fail at run time with a confusing error.
+      const cur = pickedRef.current;
+      const wantsImage = toolById(id).acceptKind === "image";
+      if (cur && wantsImage !== (fileKind(cur) === "image")) clearPicked();
     },
-    [clearResult],
+    [clearPicked, clearResult, go],
   );
 
   const handleFile = useCallback(
     async (f: File) => {
       setFailure(null);
       setRejected(null);
+      // A drop on the index would go nowhere, since only a tool page can show
+      // a file. Land on the tool that handles this kind.
+      if (onIndex) go({ name: "tool", id: fileKind(f) === "image" ? "image" : "compress" });
       if (!isMediaFile(f)) {
         setPickedUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
@@ -281,8 +343,8 @@ export default function App() {
         setRejected({
           name: f.name,
           message: wantsImage
-            ? "The Images tab works on pictures. Switch tools for video or audio."
-            : "That's a picture — use the Images tab for it.",
+            ? "Images only works on pictures. Pick a video or audio tool instead."
+            : "That's a picture — the Images tool is the one for it.",
         });
         return;
       }
@@ -314,7 +376,7 @@ export default function App() {
         });
       }
     },
-    [clearResult, activeTool],
+    [clearResult, activeTool, onIndex, go],
   );
 
   const handleFiles = useCallback(
@@ -528,7 +590,7 @@ export default function App() {
         const outFile = new File([out.slice() as unknown as BlobPart], t.outName(picked.name, resolvedOpts), { type: "video/mp4" });
         setJobHistory((prev) => [
           {
-            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            id: newJobId(),
             fileName: `${files.length} files`,
             tool: activeTool,
             opts: resolvedOpts,
@@ -564,7 +626,7 @@ export default function App() {
         const { bytes, mime, outFile, totalBytes, frames, resolvedOpts } = await processOne(file, activeTool, o);
         setJobHistory((prev) => [
           {
-            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            id: newJobId(),
             fileName: file.name,
             tool: activeTool,
             opts: resolvedOpts,
@@ -624,19 +686,7 @@ export default function App() {
     });
   };
 
-  const handleRemoveFile = (): void => {
-    setPickedUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-    setPicked(null);
-    setPickedDuration(null);
-    setProbing(false);
-    setBatchQueue([]);
-    setRejected(null);
-    clearResult();
-    setFailure(null);
-  };
+  const handleRemoveFile = clearPicked;
 
   const handleShare = async (): Promise<void> => {
     if (!resultFile) return;
@@ -651,19 +701,13 @@ export default function App() {
   };
 
   const rerunFromHistory = (job: JobHistory): void => {
-    setActiveTool(job.tool);
     setOpts((prev) => ({ ...prev, [job.tool]: { ...prev[job.tool], ...job.opts } }));
-    clearResult();
-    setFailure(null);
+    handleSelectTool(job.tool);
   };
 
   const clearHistory = (): void => {
     setJobHistory([]);
-    try {
-      localStorage.removeItem("mpb-history");
-    } catch {
-      /* private mode */
-    }
+    forgetHistory();
   };
 
   useEffect(() => {
@@ -691,11 +735,7 @@ export default function App() {
   }, [opts]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("mpb-history", JSON.stringify(jobHistory.slice(0, 10)));
-    } catch {
-      /* noop */
-    }
+    saveHistory(jobHistory);
   }, [jobHistory]);
 
   // Revoke result URL on unmount.
@@ -748,35 +788,59 @@ export default function App() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-2 pt-4 sm:max-w-lg">
       <header className="flex items-start justify-between gap-3 px-1">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span
-            aria-hidden="true"
-            className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-[#2f8bff] to-[#0058c7] text-white shadow-[0_8px_16px_-6px_rgb(0_113_227/0.55)]"
+        {view.name === "tool" ? (
+          // On a tool page the way out matters more than the brand mark.
+          <button
+            type="button"
+            onClick={() => go({ name: "home" })}
+            className="btn-apple-secondary -ml-1.5 flex min-h-10 shrink-0 items-center gap-1.5 rounded-full py-2 pl-2.5 pr-3.5 text-[13.5px] font-semibold tracking-tight text-neutral-800"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="size-[18px]"
+              aria-hidden="true"
+              className="size-4"
             >
-              <path d="M6 4l14 8-14 8V4z" />
+              <path d="M15 6l-6 6l6 6" />
             </svg>
-          </span>
-          <div className="min-w-0">
-            <h1 className="text-[19px] font-semibold leading-none tracking-tight">MpBuddy</h1>
-            <p className="mt-1 text-[11.5px] leading-snug text-neutral-500">
-              Everything runs on your device.
-            </p>
+            All tools
+          </button>
+        ) : (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-[#2f8bff] to-[#0058c7] text-white shadow-[0_8px_16px_-6px_rgb(0_113_227/0.55)]"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="size-[18px]"
+              >
+                <path d="M6 4l14 8-14 8V4z" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-[19px] font-semibold leading-none tracking-tight">MpBuddy</h1>
+              <p className="mt-1 text-[11.5px] leading-snug text-neutral-500">
+                Everything runs on your device.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
         {engineNote && engineVisible && (
           <p
             role="status"
-            className="mt-0.5 flex shrink-0 items-center gap-1.5 rounded-full bg-black/[0.05] px-2.5 py-1 text-[11px] font-medium text-neutral-600"
+            className="mt-0.5 flex shrink-0 items-center gap-1.5 self-center rounded-full bg-black/[0.05] px-2.5 py-1 text-[11px] font-medium text-neutral-600"
           >
             <span
               className={
@@ -788,45 +852,59 @@ export default function App() {
         )}
       </header>
 
-      <nav className="mt-4 flex flex-wrap gap-1.5" aria-label="Tools">
-        {TOOLS.map((t) => {
-          const active = t.id === activeTool;
-          return (
-            <button
-              key={t.id}
-              className={
-                active
-                  ? "flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-semibold text-white shadow-[0_6px_14px_-6px_rgb(0_0_0/0.5)]"
-                  : "flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-white/70 px-3 py-1.5 text-[12px] font-medium text-neutral-600 transition-colors hover:bg-white hover:text-neutral-900"
-              }
-              aria-pressed={active}
-              onClick={() => handleSelectTool(t.id)}
+      {view.name === "home" ? (
+        <main className="mt-5 flex flex-col gap-4 pb-6">
+          <ToolPicker onOpen={handleSelectTool} />
+          <RecentJobs
+            jobs={jobHistory}
+            onReuse={rerunFromHistory}
+            onClear={clearHistory}
+          />
+          <details className="card card-tint rounded-[22px] p-3 text-[13px] leading-relaxed text-neutral-500">
+            <summary className="cursor-pointer font-medium text-neutral-700">
+              Limits &amp; privacy
+            </summary>
+            <ul className="mt-2.5 list-disc space-y-1.5 pl-4">
+              <li>
+                Everything runs locally via ffmpeg.wasm. No uploads, works offline after first
+                load.
+              </li>
+              <li>
+                Best for clips &lt; 2 min, ≤1080p, &lt;200 MB desktop / &lt;50 MB mobile. Bigger
+                files can crash mobile tabs.
+              </li>
+              <li>First run downloads a ~30 MB engine once, then it&apos;s cached.</li>
+            </ul>
+          </details>
+        </main>
+      ) : (
+        <>
+          <div className="mt-5 flex items-start gap-3 px-1">
+            <span
+              aria-hidden="true"
+              className="grid size-12 shrink-0 place-items-center rounded-[15px] bg-accent/10 text-accent"
             >
-              <span aria-hidden="true" className={active ? "text-[#7cc4ff]" : "text-neutral-400"}>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-3.5"
-                  dangerouslySetInnerHTML={{ __html: t.icon }}
-                />
-              </span>
-              {t.label}
-            </button>
-          );
-        })}
-      </nav>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="size-6"
+                dangerouslySetInnerHTML={{ __html: tool.icon }}
+              />
+            </span>
+            <div className="min-w-0 pt-0.5">
+              <h1 className="text-[24px] font-semibold leading-tight tracking-tight">
+                {tool.label}
+              </h1>
+              <p className="mt-0.5 text-[13px] leading-snug text-neutral-500">{tool.hint}</p>
+            </div>
+          </div>
 
-      <div className="mt-5 px-1">
-        <h2 className="text-[22px] font-semibold leading-tight tracking-tight">{tool.label}</h2>
-        <p className="mt-0.5 text-[13px] leading-snug text-neutral-500">{tool.hint}</p>
-      </div>
-
-      <main className="mt-4 flex flex-col gap-2.5 pb-28" aria-busy={running}>
+          <main className="mt-4 flex flex-col gap-2.5 pb-28" aria-busy={running}>
         {picked ? (
           <div className="card card-tint flex items-center gap-3 rounded-[22px] p-3">
             <span
@@ -1006,30 +1084,29 @@ export default function App() {
         <section className="card card-tint rounded-[22px] p-2">
           {activeTool === "compress" && (
             <div className="flex flex-col gap-2">
-              <Field label="Quality" group inline>
-                <Segmented
-                  value={opts.compress!.quality!}
-                  options={[
-                    ["high", "High"],
-                    ["med", "Medium"],
-                    ["low", "Low"],
-                  ]}
-                  onChange={(v) => patchOpt("compress", "quality", v)}
-                />
-              </Field>
-              <Field label="Max height" group inline>
-                <Segmented
-                  cols={4}
-                  value={opts.compress!.maxH!}
-                  options={[
-                    ["orig", "Original"],
-                    ["1080", "1080p"],
-                    ["720", "720p"],
-                    ["480", "480p"],
-                  ]}
-                  onChange={(v) => patchOpt("compress", "maxH", v)}
-                />
-              </Field>
+              <Slider
+                label="Quality"
+                value={opts.compress!.quality!}
+                options={[
+                  ["high", "High"],
+                  ["med", "Medium"],
+                  ["low", "Low"],
+                ]}
+                onChange={(v) => patchOpt("compress", "quality", v)}
+                hint="Left keeps more detail and makes a bigger file."
+              />
+              <Slider
+                label="Max height"
+                value={opts.compress!.maxH!}
+                options={[
+                  ["orig", "Original"],
+                  ["1080", "1080p"],
+                  ["720", "720p"],
+                  ["480", "480p"],
+                ]}
+                onChange={(v) => patchOpt("compress", "maxH", v)}
+                hint="Only ever scales down — a small clip is never stretched."
+              />
               {compressEstimate && (
                 <p className="text-[12px] leading-snug text-neutral-500">
                   Roughly{" "}
@@ -1113,26 +1190,21 @@ export default function App() {
 
           {activeTool === "mp3" && (
             <div className="flex flex-col gap-2">
-              <Field
+              <Slider
                 label="Bitrate"
-                group
-                inline
+                value={opts.mp3!.bitrate!}
+                options={[
+                  ["128k", "128 kbps"],
+                  ["192k", "192 kbps"],
+                  ["256k", "256 kbps"],
+                ]}
+                onChange={(v) => patchOpt("mp3", "bitrate", v)}
                 hint={
                   pickedKind === "audio"
                     ? "Re-encodes the audio it already has."
                     : "192 kbps is about the ceiling where MP3 stops sounding worse than the source."
                 }
-              >
-                <Segmented
-                  value={opts.mp3!.bitrate!}
-                  options={[
-                    ["128k", "128 kbps"],
-                    ["192k", "192 kbps"],
-                    ["256k", "256 kbps"],
-                  ]}
-                  onChange={(v) => patchOpt("mp3", "bitrate", v)}
-                />
-              </Field>
+              />
             </div>
           )}
 
@@ -1174,28 +1246,22 @@ export default function App() {
                       onChange={(v) => patchOpt("convert", "shorts", v)}
                     />
                   </Field>
-                  <Field
+                  <Slider
                     label="Target size"
-                    group
-                    inline
+                    value={opts.convert!.targetMB ?? "off"}
+                    options={[
+                      ["off", "Off"],
+                      ["10", "10 MB"],
+                      ["25", "25 MB"],
+                      ["50", "50 MB"],
+                    ]}
+                    onChange={(v) => patchOpt("convert", "targetMB", v)}
                     hint={
                       (opts.convert!.targetMB ?? "off") === "off"
-                        ? "Off keeps the quality setting ffmpeg picks for the format."
+                        ? "Off lets ffmpeg pick the quality for the format."
                         : "Caps the bitrate to land under this size. Duration is unknown until a file is picked."
                     }
-                  >
-                    <Segmented
-                      cols={4}
-                      value={opts.convert!.targetMB!}
-                      options={[
-                        ["off", "Off"],
-                        ["10", "<10 MB"],
-                        ["25", "<25 MB"],
-                        ["50", "<50 MB"],
-                      ]}
-                      onChange={(v) => patchOpt("convert", "targetMB", v)}
-                    />
-                  </Field>
+                  />
                   <Field label="Sound" group inline>
                     <Segmented
                       cols={2}
@@ -1319,34 +1385,30 @@ export default function App() {
 
           {activeTool === "thumbnail" && (
             <div className="flex flex-col gap-2">
-              <Field label="Frame at" inline hint="Seconds, or m:ss — 90 and 1:30 both work.">
-                <TextInput
-                  value={opts.thumbnail!.frameAt ?? "0:01"}
-                  placeholder="0:01"
-                  ariaLabel="Frame time"
-                  onChange={(v) => patchOpt("thumbnail", "frameAt", v)}
+              {pickedDuration != null ? (
+                <RangeSlider
+                  label="Frame at"
+                  value={parseTime(opts.thumbnail!.frameAt ?? "") ?? 0}
+                  min={0}
+                  max={Math.max(1, pickedDuration)}
+                  step={0.1}
+                  format={fmtTrim}
+                  onChange={(v) => patchOpt("thumbnail", "frameAt", fmtTrim(v))}
+                  hint="Drag along the clip, then run to save that frame as a JPG."
                 />
-              </Field>
-              {pickedDuration != null && (
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    ["Start", 0],
-                    ["Middle", pickedDuration / 2],
-                    ["End", Math.max(0, pickedDuration - 0.5)],
-                  ].map(([label, at]) => (
-                    <button
-                      key={label as string}
-                      type="button"
-                      onClick={() => patchOpt("thumbnail", "frameAt", fmtTrim(at as number))}
-                      className="btn-apple-secondary flex min-h-10 flex-col items-center justify-center rounded-[12px] text-[13px] font-semibold text-neutral-800"
-                    >
-                      {label as string}
-                      <span className="text-[11px] font-medium tabular-nums text-neutral-500">
-                        {fmtTrim(at as number)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+              ) : (
+                <Field
+                  label="Frame at"
+                  inline
+                  hint="Pick a file and you can scrub its timeline here."
+                >
+                  <TextInput
+                    value={opts.thumbnail!.frameAt ?? "0:01"}
+                    placeholder="0:01"
+                    ariaLabel="Frame time"
+                    onChange={(v) => patchOpt("thumbnail", "frameAt", v)}
+                  />
+                </Field>
               )}
             </div>
           )}
@@ -1372,20 +1434,17 @@ export default function App() {
 
           {activeTool === "speed" && (
             <div className="flex flex-col gap-2">
-              <Field label="Speed" group inline hint="Audio tempo adjusts to match — no chipmunks.">
-                <Segmented
-                  cols={3}
-                  value={opts.speed!.rate!}
-                  options={[
-                    ["0.5", "0.5×"],
-                    ["0.75", "0.75×"],
-                    ["1.25", "1.25×"],
-                    ["1.5", "1.5×"],
-                    ["2", "2×"],
-                  ]}
-                  onChange={(v) => patchOpt("speed", "rate", v)}
-                />
-              </Field>
+              <RangeSlider
+                label="Speed"
+                value={Number(opts.speed!.rate ?? "1.5") || 1.5}
+                min={0.5}
+                max={3}
+                step={0.25}
+                format={(v) => `${trimNum(v)}×`}
+                ticks={[0.5, 1, 2]}
+                onChange={(v) => patchOpt("speed", "rate", trimNum(v))}
+                hint="1× is the original speed. Audio tempo follows it, so nobody sounds like a chipmunk."
+              />
             </div>
           )}
 
@@ -1421,18 +1480,16 @@ export default function App() {
                   onChange={(v) => patchOpt("fade", "which", v)}
                 />
               </Field>
-              <Field label="Duration" group inline>
-                <Segmented
-                  cols={3}
-                  value={opts.fade!.seconds!}
-                  options={[
-                    ["0.5", "0.5s"],
-                    ["1", "1s"],
-                    ["2", "2s"],
-                  ]}
-                  onChange={(v) => patchOpt("fade", "seconds", v)}
-                />
-              </Field>
+              <RangeSlider
+                label="Fade length"
+                value={Number(opts.fade!.seconds ?? "1") || 1}
+                min={0.2}
+                max={5}
+                step={0.1}
+                format={(v) => `${trimNum(v)}s`}
+                onChange={(v) => patchOpt("fade", "seconds", trimNum(v))}
+                hint="Half a second is a quick dip; a couple of seconds is a soft landing."
+              />
             </div>
           )}
 
@@ -1457,19 +1514,21 @@ export default function App() {
                 />
               </Field>
               {opts.loop!.mode !== "boomerang" && (
-                <Field label="Repeats" group inline>
-                  <Segmented
-                    cols={4}
-                    value={opts.loop!.times!}
-                    options={[
-                      ["2", "×2"],
-                      ["3", "×3"],
-                      ["4", "×4"],
-                      ["8", "×8"],
-                    ]}
-                    onChange={(v) => patchOpt("loop", "times", v)}
-                  />
-                </Field>
+                <Slider
+                  label="Repeats"
+                  value={opts.loop!.times ?? "2"}
+                  options={[
+                    ["2", "×2"],
+                    ["3", "×3"],
+                    ["4", "×4"],
+                    ["5", "×5"],
+                    ["6", "×6"],
+                    ["7", "×7"],
+                    ["8", "×8"],
+                  ]}
+                  onChange={(v) => patchOpt("loop", "times", v)}
+                  hint="Each repeat re-encodes, so a high count takes a while."
+                />
               )}
             </div>
           )}
@@ -1483,19 +1542,18 @@ export default function App() {
 
           {activeTool === "resize" && (
             <div className="flex flex-col gap-2">
-              <Field label="Max height" group inline hint="Downscale only — small clips never get stretched bigger.">
-                <Segmented
-                  cols={4}
-                  value={opts.resize!.maxH!}
-                  options={[
-                    ["orig", "Original"],
-                    ["1080", "1080p"],
-                    ["720", "720p"],
-                    ["480", "480p"],
-                  ]}
-                  onChange={(v) => patchOpt("resize", "maxH", v)}
-                />
-              </Field>
+              <Slider
+                label="Max height"
+                value={opts.resize!.maxH!}
+                options={[
+                  ["orig", "Original"],
+                  ["1080", "1080p"],
+                  ["720", "720p"],
+                  ["480", "480p"],
+                ]}
+                onChange={(v) => patchOpt("resize", "maxH", v)}
+                hint="Downscale only — small clips never get stretched bigger."
+              />
             </div>
           )}
 
@@ -1522,19 +1580,17 @@ export default function App() {
 
           {activeTool === "frames" && (
             <div className="flex flex-col gap-2">
-              <Field label="Every" group inline>
-                <Segmented
-                  cols={4}
-                  value={opts.frames!.every!}
-                  options={[
-                    ["1", "1s"],
-                    ["2", "2s"],
-                    ["5", "5s"],
-                    ["10", "10s"],
-                  ]}
-                  onChange={(v) => patchOpt("frames", "every", v)}
-                />
-              </Field>
+              <RangeSlider
+                label="Save a frame every"
+                value={Number(opts.frames!.every ?? "2") || 2}
+                min={0.5}
+                max={20}
+                step={0.5}
+                format={(v) => `${trimNum(v)}s`}
+                ticks={[1, 5, 10]}
+                onChange={(v) => patchOpt("frames", "every", trimNum(v))}
+                hint="One second on a 60-second clip gives you 60 images — they save as a numbered set."
+              />
               <Field label="Format" group inline>
                 <Segmented
                   cols={2}
@@ -1564,32 +1620,30 @@ export default function App() {
                 />
               </Field>
               {opts.image!.op === "compress" && (
-                <Field label="Quality" group inline>
-                  <Segmented
-                    value={opts.image!.quality!}
-                    options={[
-                      ["high", "High"],
-                      ["med", "Medium"],
-                      ["low", "Low"],
-                    ]}
-                    onChange={(v) => patchOpt("image", "quality", v)}
-                  />
-                </Field>
+                <Slider
+                  label="Quality"
+                  value={opts.image!.quality!}
+                  options={[
+                    ["high", "High"],
+                    ["med", "Medium"],
+                    ["low", "Low"],
+                  ]}
+                  onChange={(v) => patchOpt("image", "quality", v)}
+                />
               )}
               {opts.image!.op === "resize" && (
-                <Field label="Max width" group inline>
-                  <Segmented
-                    cols={4}
-                    value={opts.image!.maxW!}
-                    options={[
-                      ["orig", "Original"],
-                      ["1920", "1920"],
-                      ["1280", "1280"],
-                      ["800", "800"],
-                    ]}
-                    onChange={(v) => patchOpt("image", "maxW", v)}
-                  />
-                </Field>
+                <Slider
+                  label="Max width"
+                  value={opts.image!.maxW ?? "orig"}
+                  options={[
+                    ["orig", "Original"],
+                    ["1920", "1920"],
+                    ["1280", "1280"],
+                    ["800", "800"],
+                  ]}
+                  onChange={(v) => patchOpt("image", "maxW", v)}
+                  hint="Scales down only, so a small photo stays its own size."
+                />
               )}
               {opts.image!.op === "convert" && (
                 <Field label="Format" group inline>
@@ -1761,45 +1815,11 @@ export default function App() {
         </details>
 
         {jobHistory.length > 0 && (
-          <section className="card card-tint rounded-[22px] p-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[13px] font-semibold tracking-tight text-neutral-800">
-                Recent jobs
-              </p>
-              <button
-                type="button"
-                onClick={clearHistory}
-                className="text-[12px] font-medium text-neutral-400 hover:text-neutral-600"
-              >
-                Clear
-              </button>
-            </div>
-            <ul className="mt-2 space-y-2">
-              {jobHistory.slice(0, 5).map((j) => (
-                <li
-                  key={j.id}
-                  className="flex items-center justify-between gap-2 rounded-[10px] bg-black/[0.04] px-2.5 py-2"
-                >
-                  <div className="min-w-0 text-[12px] text-neutral-600">
-                    <p className="truncate font-medium text-neutral-800">{j.fileName}</p>
-                    <p className="tabular-nums">
-                      {toolById(j.tool).label} · {formatBytes(j.inputBytes)} →{" "}
-                      {formatBytes(j.outputBytes)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => rerunFromHistory(j)}
-                    className="btn-apple-secondary shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold text-neutral-700"
-                  >
-                    Reuse
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <RecentJobs jobs={jobHistory} onReuse={rerunFromHistory} onClear={clearHistory} />
         )}
       </main>
+        </>
+      )}
 
       <footer className="mt-8 flex flex-col items-center gap-2 border-t border-black/[0.06] pt-5 pb-2 text-center">
         <a
@@ -1817,7 +1837,9 @@ export default function App() {
       </footer>
 
       {/* The job bar: one surface that always holds the next useful action, so
-          nothing important sits below the fold on a phone. */}
+          nothing important sits below the fold on a phone. Tool pages only —
+          on the index the tiles are the actions. */}
+      {view.name === "tool" && (
       <div
         data-jobbar=""
         className="sticky bottom-0 z-30 -mx-4 mt-2 px-4 pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
@@ -1894,6 +1916,7 @@ export default function App() {
           )}
         </div>
       </div>
+      )}
 
       {dragActive && (
         <div

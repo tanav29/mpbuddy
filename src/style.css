@@ -141,6 +141,94 @@ select:focus-visible,
   outline-offset: 1px;
 }
 
+/* Sliders. The fill is painted with a gradient stopped at --fill, which the
+   component sets from the current value — no measuring, no reflow. */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 30px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.slider:focus {
+  outline: none;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #0071e3 0%,
+    #4aa3ff var(--fill, 50%),
+    rgb(0 0 0 / 0.09) var(--fill, 50%),
+    rgb(0 0 0 / 0.09) 100%
+  );
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1);
+}
+.slider::-moz-range-track {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #0071e3 0%,
+    #4aa3ff var(--fill, 50%),
+    rgb(0 0 0 / 0.09) var(--fill, 50%),
+    rgb(0 0 0 / 0.09) 100%
+  );
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1);
+}
+.slider::-moz-range-progress {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #4aa3ff, #0071e3);
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -8px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgb(0 0 0 / 0.07);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.28),
+    0 6px 14px -4px rgb(0 0 0 / 0.35);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.15s ease;
+}
+.slider::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgb(0 0 0 / 0.07);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.28),
+    0 6px 14px -4px rgb(0 0 0 / 0.35);
+}
+.slider:active::-webkit-slider-thumb {
+  transform: scale(1.14);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.28),
+    0 8px 18px -4px rgb(0 0 0 / 0.4);
+}
+.slider:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 4px rgb(0 113 227 / 0.28),
+    0 1px 2px rgb(0 0 0 / 0.28),
+    0 6px 14px -4px rgb(0 0 0 / 0.35);
+}
+.slider:focus-visible::-moz-range-thumb {
+  box-shadow:
+    0 0 0 4px rgb(0 113 227 / 0.28),
+    0 1px 2px rgb(0 0 0 / 0.28),
+    0 6px 14px -4px rgb(0 0 0 / 0.35);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
