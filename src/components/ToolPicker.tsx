@@ -47,8 +47,15 @@ function ToolTile({
           dangerouslySetInnerHTML={{ __html: tool.icon }}
         />
       </span>
-      <span className="mt-3 text-[17px] font-semibold leading-tight tracking-[-0.01em] text-[#111]">
-        {tool.label}
+      <span className="mt-3 flex w-full items-center gap-2">
+        <span className="text-[17px] font-semibold leading-tight tracking-[-0.01em] text-[#111]">
+          {tool.label}
+        </span>
+        {tool.badge === "new" && (
+          <span className="rounded-full border border-[#ebd9a8] bg-[#fbf3db] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[#956400]">
+            New
+          </span>
+        )}
       </span>
       <span className="mt-1 text-[14px] leading-snug text-[#787774]">{tool.hint}</span>
       <span className="pointer-events-none absolute right-4 top-5 size-4 text-[#d8d7d2] transition-colors group-hover:text-[#111]">

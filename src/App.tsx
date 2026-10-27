@@ -5,7 +5,10 @@ import {
   IN,
   OUT,
   OUTPUT_FORMATS,
+  PASSPORT_MAP,
+  PASSPORT_SIZES,
   TOOLS,
+  TOOL_GROUPS,
   cropWH,
   toolById,
   trimMode,
@@ -18,10 +21,12 @@ import {
   fmtTrim,
   formatBytes,
   parseTime,
-  probeDuration,
+  probeImageSize,
+  probeMediaMeta,
   shareFile,
   sizeWarning,
 } from "./files";
+import type { MediaMeta } from "./files";
 import {
   cancelEngine,
   ensureEngine,
@@ -90,15 +95,36 @@ const INITIAL_OPTS: Opts = {
   filter: { preset: "normal" },
   frames: { every: "2", fmt: "png" },
   image: { op: "compress", quality: "med", maxW: "orig", format: "webp" },
+  tosize: { targetMB: "10", maxH: "720", durationSec: "" },
+  mute: {},
+  acut: { start: "", end: "", fades: "off", format: "m4a" },
+  denoise: { amount: "med", hum: "on" },
+  isolate: { mode: "voice" },
+  wave: { shape: "16x9", color: "amber", style: "cline" },
+  watermark: {
+    mode: "text",
+    text: "",
+    size: "0.2",
+    opacity: "0.8",
+    pos: "br",
+    logoSet: "0",
+    logoW: "",
+    logoH: "",
+  },
+  heic: { fmt: "jpg", quality: "med" },
+  passport: { size: "35x45", focalX: "50", focalY: "45" },
 };
 
 const MEDIA_EXTS = new Set([
   "mp4", "m4v", "mov", "mkv", "webm", "3gp", "avi", "mpg", "mpeg",
   "mp3", "m4a", "wav", "ogg", "oga", "opus", "aac", "flac",
-  "png", "jpg", "jpeg", "webp",
+  "png", "jpg", "jpeg", "webp", "heic", "heif", "hif",
 ]);
 
-const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp"]);
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "heic", "heif", "hif"]);
+
+/** iPhone / iOS photos — only the HEIC tool can open these. */
+const HEIC_EXTS = new Set(["heic", "heif", "hif"]);
 
 function fileKind(f: File): "video" | "audio" | "image" {
   if (f.type.startsWith("image/")) return "image";
@@ -133,6 +159,15 @@ function loadOpts(): Opts {
       filter: { ...INITIAL_OPTS.filter, ...(parsed.filter ?? {}) },
       frames: { ...INITIAL_OPTS.frames, ...(parsed.frames ?? {}) },
       image: { ...INITIAL_OPTS.image, ...(parsed.image ?? {}) },
+      tosize: { ...INITIAL_OPTS.tosize, ...(parsed.tosize ?? {}) },
+      mute: { ...INITIAL_OPTS.mute, ...(parsed.mute ?? {}) },
+      acut: { ...INITIAL_OPTS.acut, ...(parsed.acut ?? {}) },
+      denoise: { ...INITIAL_OPTS.denoise, ...(parsed.denoise ?? {}) },
+      isolate: { ...INITIAL_OPTS.isolate, ...(parsed.isolate ?? {}) },
+      wave: { ...INITIAL_OPTS.wave, ...(parsed.wave ?? {}) },
+      watermark: { ...INITIAL_OPTS.watermark, ...(parsed.watermark ?? {}) },
+      heic: { ...INITIAL_OPTS.heic, ...(parsed.heic ?? {}) },
+      passport: { ...INITIAL_OPTS.passport, ...(parsed.passport ?? {}) },
     };
   } catch {
     return INITIAL_OPTS;
@@ -157,7 +192,8 @@ function mimeForExt(ext: string): string | null {
     case "m4v": return "video/mp4";
     case "webm": return "video/webm";
     case "mp3": return "audio/mpeg";
-    case "m4a": return "audio/mp4";
+    case "m4a":
+    case "m4r": return "audio/mp4";
     case "wav": return "audio/wav";
     case "gif": return "image/gif";
     case "png": return "image/png";
@@ -198,6 +234,34 @@ function explainFailure(msg: string): Failure {
   if (/Unknown encoder|Unknown decoder|not supported|Invalid audio stream/i.test(msg))
     return { title: "That format isn't supported here", hint: "MP4 (H.264) and MP3 are the safest inputs.", detail: msg };
   return { title: "Couldn't finish that", hint: "Try again, or try a different file.", detail: msg };
+}
+
+/**
+ * Renders the watermark text to a transparent PNG at run time, on this
+ * machine — no font uploads, nothing leaves the tab. Big canvas, scaled down
+ * by the overlay filter so the edges stay sharp.
+ */
+async function renderWatermarkPNG(text: string): Promise<{ blob: Blob; w: number; h: number }> {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not available");
+  ctx.font = "600 220px Inter, system-ui, sans-serif";
+  const pad = 48;
+  const w = Math.ceil(ctx.measureText(text).width) + pad * 2;
+  const h = Math.ceil(220 * 1.25) + pad;
+  canvas.width = w;
+  canvas.height = h;
+  // Resizing a canvas resets its state, so the font goes on twice.
+  ctx.font = "600 220px Inter, system-ui, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
+  ctx.shadowBlur = 18;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(text, pad, h - pad / 2);
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't render the watermark text"))), "image/png");
+  });
+  return { blob, w, h };
 }
 
 /**
@@ -252,11 +316,27 @@ export default function App() {
   const [jobHistory, setJobHistory] = useState<JobHistory[]>(loadHistory);
   const [shareLabel, setShareLabel] = useState("Share");
   const [frameFiles, setFrameFiles] = useState<File[]>([]);
+  // Picture dimensions of the picked file (waveform sizing, stamp margins).
+  const [pickedDims, setPickedDims] = useState<MediaMeta | null>(null);
+  // The watermark logo: file plus its measured pixel size.
+  const [wmLogo, setWmLogo] = useState<{ file: File; w: number; h: number } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wmLogoInputRef = useRef<HTMLInputElement>(null);
   const pickedRef = useRef<File | null>(null);
   const resultWrapRef = useRef<HTMLElement>(null);
   pickedRef.current = picked;
+
+  const wmLogoUrl = useMemo(
+    () => (wmLogo ? URL.createObjectURL(wmLogo.file) : null),
+    [wmLogo],
+  );
+  useEffect(
+    () => () => {
+      if (wmLogoUrl) URL.revokeObjectURL(wmLogoUrl);
+    },
+    [wmLogoUrl],
+  );
 
   const running = phase !== "idle";
   const shareSupported = useMemo(() => canAttemptShare(), []);
@@ -312,12 +392,40 @@ export default function App() {
     });
     setPicked(null);
     setPickedDuration(null);
+    setPickedDims(null);
+    setWmLogo(null);
     setProbing(false);
     setBatchQueue([]);
     setRejected(null);
     clearResult();
     setFailure(null);
   }, [clearResult]);
+
+  /** Sets (or drops) the watermark logo, remembering its pixel size. */
+  const setWatermarkLogo = useCallback(async (file: File | null) => {
+    if (!file) {
+      setWmLogo(null);
+      setOpts((prev) => ({ ...prev, watermark: { ...prev.watermark, logoSet: "0" } }));
+      return;
+    }
+    const dims = await probeImageSize(file);
+    if (dims) {
+      setWmLogo({ file, w: dims.w, h: dims.h });
+      setOpts((prev) => ({
+        ...prev,
+        watermark: {
+          ...prev.watermark,
+          logoSet: "1",
+          logoW: String(dims.w),
+          logoH: String(dims.h),
+        },
+      }));
+    } else {
+      // Undecodable as a stamp — validation keeps asking for a logo.
+      setWmLogo(null);
+      setOpts((prev) => ({ ...prev, watermark: { ...prev.watermark, logoSet: "0" } }));
+    }
+  }, []);
 
   /** Engine chatter is transient: show it while it matters, then get out of the way. */
   const noteEngine = useCallback((text: string, busy = false) => {
@@ -340,7 +448,13 @@ export default function App() {
       // drop it here than to fail at run time with a confusing error.
       const cur = pickedRef.current;
       const wantsImage = toolById(id).acceptKind === "image";
-      if (cur && wantsImage !== (fileKind(cur) === "image")) clearPicked();
+      if (
+        cur &&
+        (wantsImage !== (fileKind(cur) === "image") ||
+          (id === "heic" && !HEIC_EXTS.has(extOf(cur.name))) ||
+          ((id === "image" || id === "passport") && HEIC_EXTS.has(extOf(cur.name))))
+      )
+        clearPicked();
     },
     [clearPicked, clearResult, go],
   );
@@ -351,7 +465,16 @@ export default function App() {
       setRejected(null);
       // A drop on the index would go nowhere, since only a tool page can show
       // a file. Land on the tool that handles this kind.
-      if (onIndex) go({ name: "tool", id: fileKind(f) === "image" ? "image" : "compress" });
+      if (onIndex)
+        go({
+          name: "tool",
+          id:
+            fileKind(f) === "image"
+              ? HEIC_EXTS.has(extOf(f.name))
+                ? "heic"
+                : "image"
+              : "compress",
+        });
       if (!isMediaFile(f)) {
         setPickedUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
@@ -377,21 +500,45 @@ export default function App() {
         });
         return;
       }
+      // The still tools are particular: libheif only reads Apple photos, and
+      // ffmpeg can't read them at all — steer the file somewhere it works.
+      const heicPhoto = HEIC_EXTS.has(extOf(f.name));
+      if (activeTool === "heic" && !heicPhoto) {
+        setRejected({
+          name: f.name,
+          message: "The HEIC tool opens .heic / .heif photos only — use Images for JPG and PNG.",
+        });
+        return;
+      }
+      if ((activeTool === "image" || activeTool === "passport") && heicPhoto) {
+        setRejected({
+          name: f.name,
+          message: "ffmpeg can't read iPhone HEIC — run it through HEIC → JPG first.",
+        });
+        return;
+      }
       setPickedUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return URL.createObjectURL(f);
       });
       setPicked(f);
       setPickedDuration(null);
+      setPickedDims(null);
       setProbing(true);
       clearResult();
       setBatchQueue([]);
 
-      const dur = fileKind(f) === "image" ? null : await probeDuration(f);
+      const meta = kind === "image" ? null : await probeMediaMeta(f);
+      const dur = meta?.duration ?? null;
       // Drop stale probes if the user picked another file meanwhile.
       if (pickedRef.current && pickedRef.current.name === f.name) {
         setProbing(false);
         setPickedDuration(dur);
+        setPickedDims(
+          meta && meta.width != null && meta.height != null
+            ? { duration: meta.duration, width: meta.width, height: meta.height }
+            : null,
+        );
         setOpts((prev) => {
           const t = prev.trim!;
           // A new file has its own timeline: stale cut marks would point at
@@ -400,8 +547,9 @@ export default function App() {
             ...prev.fade!,
             durationSec: dur != null ? String(dur) : (prev.fade!.durationSec ?? ""),
           };
-          if (t.end && !t.cuts) return { ...prev, fade };
-          return { ...prev, fade, trim: { ...t, cuts: "", end: t.end || (dur != null ? fmtTrim(dur) : "") } };
+          const tosize = { ...prev.tosize!, durationSec: dur != null ? String(dur) : "" };
+          if (t.end && !t.cuts) return { ...prev, fade, tosize };
+          return { ...prev, fade, tosize, trim: { ...t, cuts: "", end: t.end || (dur != null ? fmtTrim(dur) : "") } };
         });
       }
     },
@@ -475,11 +623,30 @@ export default function App() {
         ...inputOpts,
         durationSec: String(pickedDuration ?? ""),
         inputKind: pickedKindOf(file) ?? "video",
+        mainW: pickedDims?.width != null ? String(pickedDims.width) : "",
+        mainH: pickedDims?.height != null ? String(pickedDims.height) : "",
       };
       const ext = extOf(file.name) || "mp4";
       const inName = `${IN}.${ext}`;
       const wantExt = extOf(t.outName(file.name, baseOpts)) || "mp4";
       const outName = `${OUT}.${wantExt}`;
+
+      // Browser-native tools never touch the engine: the page does the work.
+      if (t.browser) {
+        const blob = await t.browser(file, baseOpts);
+        const outFile = new File([blob], t.outName(file.name, baseOpts), {
+          type: blob.type || t.outMime(baseOpts),
+        });
+        return {
+          bytes: new Uint8Array(await blob.arrayBuffer()),
+          mime: outFile.type,
+          outFile,
+          totalBytes: blob.size,
+          frames: [],
+          resolvedOpts: baseOpts,
+        };
+      }
+
       const data = await fileBytes(file);
 
       // Burst tools (Frames) produce a numbered file set, not one output.
@@ -547,9 +714,9 @@ export default function App() {
       const outFile = new File([out.slice() as unknown as BlobPart], outFileName, { type: mime });
       // Only `out` is safe to measure: writing the input into the engine detaches
       // its buffer, so `data.byteLength` reads 0 from here on.
-      return { bytes: out, mime, outFile, totalBytes: out.byteLength, resolvedOpts };
+      return { bytes: out, mime, outFile, totalBytes: out.byteLength, frames: [], resolvedOpts };
     },
-    [pickedDuration],
+    [pickedDuration, pickedDims],
   );
 
   const handleRunClick = async (): Promise<void> => {
@@ -573,9 +740,26 @@ export default function App() {
 
       const runList = [picked, ...batchQueue];
 
+      // Watermark runs with a second input: the picked logo file, or text
+      // rendered to a PNG right here in the tab.
+      const extraOpts: Record<string, string> = {};
+      let extraFiles: File[] = [];
+      if (activeTool === "watermark") {
+        if (o.mode === "logo" && wmLogo) {
+          extraFiles = [wmLogo.file];
+          extraOpts.wmW = String(wmLogo.w);
+          extraOpts.wmH = String(wmLogo.h);
+        } else {
+          const stamp = await renderWatermarkPNG(o.text.trim());
+          extraOpts.wmW = String(stamp.w);
+          extraOpts.wmH = String(stamp.h);
+          extraFiles = [new File([stamp.blob], "watermark.png", { type: "image/png" })];
+        }
+      }
+
       // Merge joins every file into a single output instead of looping per file.
       if (t.multiInput && t.buildArgsList) {
-        const files = [picked, ...batchQueue];
+        const files = activeTool === "watermark" ? [picked, ...extraFiles] : runList;
         if (files.length < 2) {
           setFailure({
             title: "Need one more file",
@@ -585,16 +769,25 @@ export default function App() {
           setPhase("idle");
           return;
         }
-        setDetail(`Merging ${files.length} files…`);
+        setDetail(
+          activeTool === "watermark"
+            ? o.mode === "logo"
+              ? "Stamping the logo…"
+              : "Stamping the watermark…"
+            : `Merging ${files.length} files…`,
+        );
         const exts = files.map((f) => extOf(f.name) || "mp4");
         const inNames = files.map((_, i) => `in_${i}.${exts[i]}`);
-        const outName = `${OUT}.mp4`;
+        const outName = `${OUT}.${extOf(t.outName(picked.name, o)) || "mp4"}`;
         const datas = await Promise.all(files.map((f) => fileBytes(f)));
         const baseOpts: Record<string, string> = {
           ...o,
           inputKind: "video",
           durationSec: String(pickedDuration ?? ""),
           inputCount: String(files.length),
+          mainW: pickedDims?.width != null ? String(pickedDims.width) : "",
+          mainH: pickedDims?.height != null ? String(pickedDims.height) : "",
+          ...extraOpts,
         };
         const guesses = t.probeAudio ? ["1", "0"] : ["1"];
         let resolvedOpts = { ...baseOpts, hasAudio: "1" };
@@ -791,6 +984,9 @@ export default function App() {
   const cropOpts = opts.crop!;
   const cropPreview = cropWH(cropOpts);
   const cropName = CROP_RATIOS.find(([v]) => v === cropOpts.ratio)?.[1] ?? "Crop";
+  const passportOpts = opts.passport!;
+  const passportSize = PASSPORT_MAP[passportOpts.size ?? "35x45"] ?? PASSPORT_MAP["35x45"]!;
+  const passportDpi = PASSPORT_SIZES.find(([v]) => v === passportOpts.size)?.[2] ?? "";
   const compressEstimate = (() => {
     if (!picked) return null;
     const q = opts.compress!.quality ?? "med";
@@ -899,42 +1095,54 @@ export default function App() {
         <>
           <main className="mt-8 grid items-start gap-6 pb-8 lg:grid-cols-[240px_minmax(0,1fr)_360px]" aria-busy={running}>
           <nav aria-label="Tools" className="hidden lg:block">
-            <div className="sticky top-20">
+            <div className="sticky top-20 max-h-[calc(100dvh-7rem)] overflow-y-auto pb-2 pr-0.5">
               <p className="section-label px-2">Tools</p>
-              <ul className="mt-2 space-y-0.5">
-                {TOOLS.map((t) => {
-                  const current = t.id === activeTool;
-                  return (
-                    <li key={t.id}>
-                      <button
-                        type="button"
-                        aria-current={current ? "page" : undefined}
-                        onClick={() => handleSelectTool(t.id)}
-                        className={
-                          "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-[14px] font-medium transition-colors " +
-                          (current
-                            ? "border-[#111] bg-[#111] text-white"
-                            : "border-transparent text-[#55534e] hover:border-[#e5e4e0] hover:bg-white hover:text-[#111]")
-                        }
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                          className="size-4 shrink-0"
-                          dangerouslySetInnerHTML={{ __html: t.icon }}
-                        />
-                        <span className="min-w-0 flex-1 truncate">{t.label}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              {TOOL_GROUPS.map((g) => (
+                <div key={g.id}>
+                  <p className="mt-3 px-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-[#a3a099]">
+                    {g.title}
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {TOOLS.filter((t) => t.group === g.id).map((t) => {
+                      const current = t.id === activeTool;
+                      return (
+                        <li key={t.id}>
+                          <button
+                            type="button"
+                            aria-current={current ? "page" : undefined}
+                            onClick={() => handleSelectTool(t.id)}
+                            className={
+                              "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-[14px] font-medium transition-colors " +
+                              (current
+                                ? "border-[#111] bg-[#111] text-white"
+                                : "border-transparent text-[#55534e] hover:border-[#e5e4e0] hover:bg-white hover:text-[#111]")
+                            }
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                              className="size-4 shrink-0"
+                              dangerouslySetInnerHTML={{ __html: t.icon }}
+                            />
+                            <span className="min-w-0 flex-1 truncate">{t.label}</span>
+                            {t.badge === "new" && !current && (
+                              <span className="shrink-0 rounded-full border border-[#ebd9a8] bg-[#fbf3db] px-1.5 text-[10px] font-semibold uppercase text-[#956400]">
+                                New
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
             </div>
           </nav>
           <div className="min-w-0 space-y-4">
@@ -1088,7 +1296,11 @@ export default function App() {
               </span>
               <span className="text-[14px] text-[#787774]">or click to browse — paste works too</span>
               <span className="mt-1 font-mono text-[12px] uppercase tracking-[0.06em] text-[#a3a099]">
-                {wantsImage ? "PNG · JPG · WebP" : "MP4 · MOV · WebM · MP3 · WAV · 200 MB"}
+                {activeTool === "heic"
+                  ? "HEIC · HEIF · HIF"
+                  : wantsImage
+                    ? "PNG · JPG · WebP"
+                    : "MP4 · MOV · WebM · MP3 · WAV · 200 MB"}
               </span>
             </button>
           </>
@@ -1101,6 +1313,17 @@ export default function App() {
           className="hidden"
           onChange={(e) => {
             handleFiles(e.target.files ?? null);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={wmLogoInputRef}
+          type="file"
+          accept="image/*,.png,.jpg,.jpeg,.webp"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void setWatermarkLogo(f);
             e.target.value = "";
           }}
         />
@@ -1731,6 +1954,403 @@ export default function App() {
                   />
                 </Field>
               )}
+            </div>
+          )}
+
+          {activeTool === "tosize" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Fit under" group inline>
+                <Segmented
+                  cols={3}
+                  value={opts.tosize!.targetMB ?? "10"}
+                  options={[
+                    ["10", "10 MB"],
+                    ["25", "25 MB"],
+                    ["50", "50 MB"],
+                  ]}
+                  onChange={(v) => patchOpt("tosize", "targetMB", v)}
+                />
+              </Field>
+              <Slider
+                label="Max height"
+                value={opts.tosize!.maxH ?? "720"}
+                options={[
+                  ["1080", "1080p"],
+                  ["720", "720p"],
+                  ["480", "480p"],
+                ]}
+                onChange={(v) => patchOpt("tosize", "maxH", v)}
+                hint="Smaller frames are cheaper to encode — a big lever on quality."
+              />
+              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                The bitrate is planned from the clip&apos;s length to land under the cap. Longer clips
+                mean lower quality per MB — that&apos;s math, not a bug.
+              </p>
+            </div>
+          )}
+
+          {activeTool === "mute" && (
+            <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+              The picture track is copied untouched and the sound is dropped — usually finishes in a
+              second or two, even for big files.
+            </p>
+          )}
+
+          {activeTool === "acut" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Output" group inline>
+                <Segmented
+                  cols={4}
+                  value={opts.acut!.format ?? "m4a"}
+                  options={[
+                    ["m4a", "M4A"],
+                    ["mp3", "MP3"],
+                    ["wav", "WAV"],
+                    ["m4r", "Ringtone"],
+                  ]}
+                  onChange={(v) => patchOpt("acut", "format", v)}
+                />
+              </Field>
+              {(opts.acut!.format ?? "m4a") === "m4r" && (
+                <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                  iPhone ringtones can&apos;t be longer than 40 seconds — anything more is trimmed to fit.
+                </p>
+              )}
+              {pickedDuration != null ? (
+                <>
+                  <RangeSlider
+                    label="Start"
+                    value={parseTime(opts.acut!.start ?? "") ?? 0}
+                    min={0}
+                    max={Math.max(1, (opts.acut!.format ?? "m4a") === "m4r" ? Math.min(40, pickedDuration) : pickedDuration)}
+                    step={0.1}
+                    format={fmtTrim}
+                    onChange={(v) => patchOpt("acut", "start", fmtTrim(v))}
+                    hint="The kept part runs from here."
+                  />
+                  <RangeSlider
+                    label="End"
+                    value={parseTime(opts.acut!.end ?? "") ?? Math.min(30, pickedDuration)}
+                    min={0}
+                    max={Math.max(1, (opts.acut!.format ?? "m4a") === "m4r" ? Math.min(40, pickedDuration) : pickedDuration)}
+                    step={0.1}
+                    format={fmtTrim}
+                    onChange={(v) => patchOpt("acut", "end", fmtTrim(v))}
+                  />
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Start at">
+                    <TextInput
+                      value={opts.acut!.start ?? ""}
+                      placeholder="0:00"
+                      ariaLabel="Audio cut start"
+                      onChange={(v) => patchOpt("acut", "start", v)}
+                    />
+                  </Field>
+                  <Field label="End at">
+                    <TextInput
+                      value={opts.acut!.end ?? ""}
+                      placeholder="0:30"
+                      ariaLabel="Audio cut end"
+                      onChange={(v) => patchOpt("acut", "end", v)}
+                    />
+                  </Field>
+                </div>
+              )}
+              <Switch
+                label="Fade the edges"
+                checked={(opts.acut!.fades ?? "off") === "on"}
+                onChange={(v) => patchOpt("acut", "fades", v ? "on" : "off")}
+              />
+            </div>
+          )}
+
+          {activeTool === "denoise" && (
+            <div className="flex flex-col gap-2">
+              <Slider
+                label="Strength"
+                value={opts.denoise!.amount ?? "med"}
+                options={[
+                  ["light", "Light"],
+                  ["med", "Medium"],
+                  ["strong", "Strong"],
+                ]}
+                onChange={(v) => patchOpt("denoise", "amount", v)}
+                hint="Strong scrubs the most noise but can soften voices — start medium."
+              />
+              <Switch
+                label="Also cut low rumble (100 Hz)"
+                checked={(opts.denoise!.hum ?? "on") === "on"}
+                onChange={(v) => patchOpt("denoise", "hum", v ? "on" : "off")}
+              />
+              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                Steady hiss, wind and hum, the classic FFT-denoiser way — no AI, all local.
+              </p>
+            </div>
+          )}
+
+          {activeTool === "isolate" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Keep" group inline>
+                <Segmented
+                  cols={2}
+                  value={opts.isolate!.mode ?? "voice"}
+                  options={[
+                    ["voice", "The voice"],
+                    ["music", "The music"],
+                  ]}
+                  onChange={(v) => patchOpt("isolate", "mode", v)}
+                />
+              </Field>
+              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                Honest disclaimer: classic stereo-channel math, not AI. Voices usually sit dead centre
+                of a stereo mix, instruments off to the sides — this keeps or cancels the centre. Best
+                on real stereo mixes.
+              </p>
+            </div>
+          )}
+
+          {activeTool === "wave" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Shape" group inline>
+                <Segmented
+                  cols={3}
+                  value={opts.wave!.shape ?? "16x9"}
+                  options={[
+                    ["16x9", "Landscape"],
+                    ["9x16", "Vertical"],
+                    ["1x1", "Square"],
+                  ]}
+                  onChange={(v) => patchOpt("wave", "shape", v)}
+                />
+              </Field>
+              <Field label="Style" group inline>
+                <Segmented
+                  cols={2}
+                  value={opts.wave!.style ?? "cline"}
+                  options={[
+                    ["cline", "Line"],
+                    ["line", "Segments"],
+                  ]}
+                  onChange={(v) => patchOpt("wave", "style", v)}
+                />
+              </Field>
+              <Field label="Colour" group inline>
+                <Segmented
+                  cols={3}
+                  value={opts.wave!.color ?? "amber"}
+                  options={[
+                    ["amber", "Honey"],
+                    ["white", "White"],
+                    ["green", "Green"],
+                  ]}
+                  onChange={(v) => patchOpt("wave", "color", v)}
+                />
+              </Field>
+              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                Draws the waveform and plays the sound underneath — a normal MP4, good for podcast
+                clips and social posts.
+              </p>
+            </div>
+          )}
+
+          {activeTool === "watermark" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Stamp" group inline>
+                <Segmented
+                  cols={2}
+                  value={opts.watermark!.mode ?? "text"}
+                  options={[
+                    ["text", "Text"],
+                    ["logo", "Logo"],
+                  ]}
+                  onChange={(v) => patchOpt("watermark", "mode", v)}
+                />
+              </Field>
+              {opts.watermark!.mode === "logo" ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5">
+                  {wmLogo && wmLogoUrl ? (
+                    <>
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <img
+                          src={wmLogoUrl}
+                          alt="Watermark logo preview"
+                          className="h-9 w-9 shrink-0 rounded-[6px] border border-[#e5e4e0] bg-white object-contain"
+                        />
+                        <span className="min-w-0 text-[14px] font-medium leading-tight text-[#111]">
+                          {wmLogo.w}×{wmLogo.h}px, keeps its place on every run
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void setWatermarkLogo(null)}
+                        className="btn-secondary shrink-0 px-3 py-1.5 text-[13px] font-medium"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="min-w-0 text-[14px] leading-snug text-[#55534e]">
+                        A PNG with a transparent background stamps cleanest.
+                      </span>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => wmLogoInputRef.current?.click()}
+                    className={wmLogo ? "hidden" : "btn-secondary shrink-0 px-3 py-1.5 text-[13px] font-medium"}
+                  >
+                    Choose logo
+                  </button>
+                </div>
+              ) : (
+                <Field label="Text" inline hint="Positioned in the corner and sized with the controls below.">
+                  <TextInput
+                    value={opts.watermark!.text ?? ""}
+                    placeholder="© your name"
+                    ariaLabel="Watermark text"
+                    onChange={(v) => patchOpt("watermark", "text", v.slice(0, 60))}
+                    onBlurNormalize={() => {}}
+                  />
+                </Field>
+              )}
+              <Slider
+                label="Size"
+                value={opts.watermark!.size ?? "0.2"}
+                options={[
+                  ["0.12", "Small"],
+                  ["0.2", "Medium"],
+                  ["0.3", "Large"],
+                ]}
+                onChange={(v) => patchOpt("watermark", "size", v)}
+                hint="Width, as a share of the video."
+              />
+              <RangeSlider
+                label="Opacity"
+                value={Math.round((Number(opts.watermark!.opacity ?? "0.8") || 0.8) * 100)}
+                min={20}
+                max={100}
+                step={5}
+                format={(v) => `${Math.round(v)}%`}
+                onChange={(v) => patchOpt("watermark", "opacity", trimNum(v / 100))}
+              />
+              <Field label="Corner" group inline>
+                <Segmented
+                  cols={4}
+                  value={opts.watermark!.pos ?? "br"}
+                  options={[
+                    ["br", "Bottom right"],
+                    ["bl", "Bottom left"],
+                    ["tr", "Top right"],
+                    ["tl", "Top left"],
+                  ]}
+                  onChange={(v) => patchOpt("watermark", "pos", v)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {activeTool === "heic" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Output" group inline>
+                <Segmented
+                  cols={2}
+                  value={opts.heic!.fmt ?? "jpg"}
+                  options={[
+                    ["jpg", "JPG"],
+                    ["png", "PNG"],
+                  ]}
+                  onChange={(v) => patchOpt("heic", "fmt", v)}
+                />
+              </Field>
+              {(opts.heic!.fmt ?? "jpg") === "jpg" && (
+                <Slider
+                  label="Quality"
+                  value={opts.heic!.quality ?? "med"}
+                  options={[
+                    ["high", "High"],
+                    ["med", "Medium"],
+                    ["low", "Low"],
+                  ]}
+                  onChange={(v) => patchOpt("heic", "quality", v)}
+                />
+              )}
+              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                The Apple photo decoder lives inside this page — no engine download, and it works even
+                before ffmpeg has ever loaded.
+              </p>
+            </div>
+          )}
+
+          {activeTool === "passport" && (
+            <div className="flex flex-col gap-2">
+              <Field label="Size" group inline>
+                <Segmented
+                  cols={4}
+                  value={passportOpts.size ?? "35x45"}
+                  options={PASSPORT_SIZES.map(([v, label, sub]): [string, string, string] => [v, label, sub])}
+                  onChange={(v) => patchOpt("passport", "size", v)}
+                />
+              </Field>
+              <Field
+                label="Face position — tap the frame"
+                group
+                hint="Models how much headroom your photo needs; faces stay centred in the print."
+              >
+                <div
+                  className="relative h-32 touch-none rounded-lg border border-[#e0dfdb] bg-[#f1f0ed]"
+                  onPointerDown={(e) => {
+                    const el = e.currentTarget;
+                    const r = el.getBoundingClientRect();
+                    const setFrom = (clientX: number, clientY: number) => {
+                      const x = Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100));
+                      const y = Math.max(0, Math.min(100, ((clientY - r.top) / r.height) * 100));
+                      setOpts((prev) => ({
+                        ...prev,
+                        passport: {
+                          ...prev.passport,
+                          focalX: String(Math.round(x)),
+                          focalY: String(Math.round(y)),
+                        },
+                      }));
+                    };
+                    setFrom(e.clientX, e.clientY);
+                    const move = (ev: PointerEvent) => setFrom(ev.clientX, ev.clientY);
+                    const up = () => {
+                      window.removeEventListener("pointermove", move);
+                      window.removeEventListener("pointerup", up);
+                    };
+                    window.addEventListener("pointermove", move);
+                    window.addEventListener("pointerup", up, { once: true });
+                  }}
+                >
+                  <div
+                    className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 border-dashed border-[#a3a099] bg-[#111]/[0.04]"
+                    style={{
+                      left: `${Math.max(0, Math.min(100, Number(passportOpts.focalX ?? "50") || 50))}%`,
+                      height: "84%",
+                      aspectRatio: `${passportSize.W} / ${passportSize.H}`,
+                    }}
+                  >
+                    <div
+                      className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-dashed border-[#a3a099]"
+                      style={{
+                        top: "38%",
+                        width: `${Math.round((passportSize.W / passportSize.H) * 34)}px`,
+                        height: `${Math.round((passportSize.W / passportSize.H) * 46)}px`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </Field>
+              <p className="flex items-center justify-between gap-3 rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                <span>
+                  Full-resolution crop rendered at {passportDpi || `${passportSize.pw} × ${passportSize.ph} px`} —
+                  the size print shops ask for.
+                </span>
+              </p>
             </div>
           )}
         </section>

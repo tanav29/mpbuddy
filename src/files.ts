@@ -220,6 +220,47 @@ export function probeDuration(file: File): Promise<number | null> {
   return promise;
 }
 
+export interface MediaMeta {
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+}
+
+/** One-and-done dimensions+length read, used for tools that need both. */
+export function probeMediaMeta(file: File): Promise<MediaMeta> {
+  const { promise, resolve } = Promise.withResolvers<MediaMeta>();
+  const url = URL.createObjectURL(file);
+  const el = document.createElement("video");
+  el.preload = "metadata";
+  el.muted = true;
+  const done = (v: MediaMeta) => {
+    URL.revokeObjectURL(url);
+    resolve(v);
+  };
+  el.onloadedmetadata = () =>
+    done({
+      duration: Number.isFinite(el.duration) ? el.duration : null,
+      width: el.videoWidth > 0 ? el.videoWidth : null,
+      height: el.videoHeight > 0 ? el.videoHeight : null,
+    });
+  el.onerror = () => done({ duration: null, width: null, height: null });
+  el.src = url;
+  setTimeout(() => done({ duration: null, width: null, height: null }), 8000);
+  return promise;
+}
+
+/** Pixel size of a still image (HEIC can't be read by <img>, callers expect null). */
+export function probeImageSize(file: File): Promise<{ w: number; h: number } | null> {
+  const { promise, resolve } = Promise.withResolvers<{ w: number; h: number } | null>();
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+  img.onerror = () => resolve(null);
+  img.src = url;
+  setTimeout(() => resolve(null), 6000);
+  return promise;
+}
+
 export function downloadUrl(data: Uint8Array, mime: string): string {
   // Use a copy: `data` may be a view into wasm memory with a larger
   // backing buffer — `data.buffer` would leak extra bytes into the Blob.
