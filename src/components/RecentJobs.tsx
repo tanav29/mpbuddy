@@ -23,7 +23,7 @@ export default function RecentJobs({
         <button
           type="button"
           onClick={onClear}
-          className="text-[13px] font-medium text-[#a3a099] transition-colors hover:text-[#111]"
+          className="text-[13px] font-medium text-[#858585] transition-colors hover:text-[#f2f2f2]"
         >
           Clear
         </button>
@@ -31,8 +31,8 @@ export default function RecentJobs({
       <ul className="mt-1 divide-y divide-[#eaeaea]">
         {jobs.slice(0, 5).map((j) => (
           <li key={j.id} className="flex items-center justify-between gap-3 py-3">
-            <div className="min-w-0 text-[13px] text-[#787774]">
-              <p className="truncate font-medium text-[#111]">{j.fileName}</p>
+            <div className="min-w-0 text-[13px] text-[#a0a0a0]">
+              <p className="truncate font-medium text-[#f2f2f2]">{j.fileName}</p>
               <p className="mt-0.5 font-mono text-[12px] tabular-nums">
                 {toolById(j.tool).label} · {formatBytes(j.inputBytes)} →{" "}
                 {formatBytes(j.outputBytes)}

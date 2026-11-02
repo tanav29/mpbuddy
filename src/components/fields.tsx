@@ -1,7 +1,7 @@
 import { useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
-const labelCls = "text-[13px] font-medium leading-tight text-[#55534e]";
-const hintCls = "text-[13px] leading-snug text-[#a3a099]";
+const labelCls = "text-[13px] font-medium leading-tight text-[#b5b5b5]";
+const hintCls = "text-[13px] leading-snug text-[#858585]";
 
 /**
  * A labelled group of controls.
@@ -43,7 +43,7 @@ export function Field({
 }
 
 export const inputCls =
-  "min-h-11 w-full rounded-md border border-[#e0dfdb] bg-white px-3 text-[15px] text-[#111] outline-none transition-colors placeholder:text-[#b4b2aa] focus:border-[#111]";
+  "min-h-11 w-full rounded-md border border-[#363636] bg-[#151515] px-3 text-[15px] text-[#f2f2f2] outline-none transition-colors placeholder:text-[#707070] focus:border-[#f2f2f2]";
 
 /** [value, label] — or [value, label, sub-label] for a two-line chip. */
 export type SegOption = readonly [string, string] | readonly [string, string, string];
@@ -92,7 +92,7 @@ export function Segmented({
       role="radiogroup"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={`grid ${grid} gap-1 rounded-lg border border-[#e5e4e0] bg-[#f4f3f0] p-1`}
+      className={`grid ${grid} gap-1 rounded-lg border border-[#303030] bg-[#1b1b1b] p-1`}
     >
       {options.map(([v, label, sub], i) => {
         const on = v === value;
@@ -109,8 +109,8 @@ export function Segmented({
             onClick={() => onChange(v)}
             className={
               (on
-                ? "border-[#e0dfdb] bg-white text-[#111] shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-                : "border-transparent text-[#787774] hover:text-[#111]") +
+                ? "border-[#363636] bg-[#151515] text-[#f2f2f2] shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                : "border-transparent text-[#a0a0a0] hover:text-[#f2f2f2]") +
               " flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md border px-1 py-1 text-center transition-colors"
             }
           >
@@ -153,10 +153,10 @@ function SliderFrame({
   children: ReactNode;
 }) {
   return (
-    <div role="group" aria-label={label} className="rounded-lg border border-[#eaeaea] bg-white px-3.5 py-2.5">
+    <div role="group" aria-label={label} className="rounded-lg border border-[#292929] bg-[#151515] px-3.5 py-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className={labelCls}>{label}</span>
-        <span className="shrink-0 rounded-full border border-[#e5e4e0] bg-[#f4f3f0] px-2 py-0.5 font-mono text-[12.5px] font-semibold tabular-nums text-[#111]">
+        <span className="shrink-0 rounded-full border border-[#303030] bg-[#1b1b1b] px-2 py-0.5 font-mono text-[12.5px] font-semibold tabular-nums text-[#f2f2f2]">
           {valueText}
         </span>
       </div>
@@ -167,7 +167,7 @@ function SliderFrame({
           {ticks.map((p, i) => (
             <span
               key={i}
-              className="absolute top-0 size-1 -translate-x-1/2 rounded-full bg-[#d8d7d2]"
+              className="absolute top-0 size-1 -translate-x-1/2 rounded-full bg-[#494949]"
               style={{ left: `${p * 100}%` }}
             />
           ))}
@@ -295,19 +295,19 @@ export function Switch({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-[#eaeaea] bg-white px-3 text-left transition-colors hover:border-[#d8d7d2]"
+      className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-[#292929] bg-[#151515] px-3 text-left transition-colors hover:border-[#494949]"
     >
-      <span className="text-[14px] font-medium text-[#111]">{label}</span>
+      <span className="text-[14px] font-medium text-[#f2f2f2]">{label}</span>
       <span
         className={
-          (checked ? "bg-[#111]" : "bg-[#e0dfdb]") +
+          (checked ? "bg-[#f2f2f2]" : "bg-[#363636]") +
           " flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors"
         }
       >
         <span
           className={
             (checked ? "translate-x-5" : "translate-x-0") +
-            " size-5 rounded-full bg-white transition-transform"
+            " size-5 rounded-full bg-[#151515] transition-transform"
           }
         />
       </span>

@@ -34,7 +34,7 @@ export default function ComparePreview({
   return (
     <div className="flex flex-col gap-2">
       <div
-        className="relative overflow-hidden rounded-lg border border-[#eaeaea] bg-black"
+        className="relative overflow-hidden rounded-lg border border-[#292929] bg-black"
         onClick={kind === "video" ? togglePlay : undefined}
       >
         {kind === "video" ? (
@@ -71,7 +71,7 @@ export default function ComparePreview({
         {/* Divider line */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/80"
+          className="pointer-events-none absolute inset-y-0 w-0.5 bg-[#151515]/80"
           style={{ left: `${pos}%` }}
         />
         <span className="absolute left-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-semibold text-white">
@@ -90,7 +90,7 @@ export default function ComparePreview({
         onChange={(e) => setPos(Number(e.target.value))}
         className="slider w-full"
       />
-      <p className="text-[12px] leading-snug text-[#a3a099]">
+      <p className="text-[12px] leading-snug text-[#858585]">
         Drag to compare before and after.{kind === "video" ? " Click the preview to play both." : ""}
       </p>
     </div>

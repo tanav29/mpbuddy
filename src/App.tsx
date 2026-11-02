@@ -112,6 +112,9 @@ const INITIAL_OPTS: Opts = {
     logoH: "",
   },
   heic: { fmt: "jpg", quality: "med" },
+  fliph: {},
+  flipv: {},
+  metadata: {},
   passport: { size: "35x45", focalX: "50", focalY: "45" },
 };
 
@@ -167,6 +170,9 @@ function loadOpts(): Opts {
       wave: { ...INITIAL_OPTS.wave, ...(parsed.wave ?? {}) },
       watermark: { ...INITIAL_OPTS.watermark, ...(parsed.watermark ?? {}) },
       heic: { ...INITIAL_OPTS.heic, ...(parsed.heic ?? {}) },
+      fliph: {},
+      flipv: {},
+      metadata: {},
       passport: { ...INITIAL_OPTS.passport, ...(parsed.passport ?? {}) },
     };
   } catch {
@@ -270,17 +276,17 @@ async function renderWatermarkPNG(text: string): Promise<{ blob: Blob; w: number
  */
 function LimitsNote() {
   return (
-    <details className="group border-t border-[#eaeaea] pt-4">
-      <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-semibold text-[#111] [&::-webkit-details-marker]:hidden">
+    <details className="group border-t border-[#292929] pt-4">
+      <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-semibold text-[#f2f2f2] [&::-webkit-details-marker]:hidden">
         <span>Limits &amp; privacy</span>
-        <span aria-hidden="true" className="font-mono text-[16px] font-normal text-[#a3a099] group-open:hidden">
+        <span aria-hidden="true" className="font-mono text-[16px] font-normal text-[#858585] group-open:hidden">
           +
         </span>
-        <span aria-hidden="true" className="hidden font-mono text-[16px] font-normal text-[#a3a099] group-open:inline">
+        <span aria-hidden="true" className="hidden font-mono text-[16px] font-normal text-[#858585] group-open:inline">
           −
         </span>
       </summary>
-      <ul className="mt-1 divide-y divide-[#eaeaea] text-[14px] leading-relaxed text-[#55534e]">
+      <ul className="mt-1 divide-y divide-[#292929] text-[14px] leading-relaxed text-[#b5b5b5]">
         <li className="py-2.5">
           Everything runs locally via ffmpeg.wasm. No uploads, works offline after first load.
         </li>
@@ -451,6 +457,7 @@ export default function App() {
       if (
         cur &&
         (wantsImage !== (fileKind(cur) === "image") ||
+          (["fliph", "flipv", "metadata"].includes(id) && fileKind(cur) !== "video") ||
           (id === "heic" && !HEIC_EXTS.has(extOf(cur.name))) ||
           ((id === "image" || id === "passport") && HEIC_EXTS.has(extOf(cur.name))))
       )
@@ -498,6 +505,10 @@ export default function App() {
             ? "Images only works on pictures. Pick a video or audio tool instead."
             : "That's a picture — the Images tool is the one for it.",
         });
+        return;
+      }
+      if (["fliph", "flipv", "metadata"].includes(activeTool) && kind !== "video") {
+        setRejected({ name: f.name, message: "This tool needs a video file." });
         return;
       }
       // The still tools are particular: libheif only reads Apple photos, and
@@ -1013,7 +1024,7 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col px-5 pb-6 sm:px-8 lg:px-10">
-      <header className="sticky top-0 z-40 -mx-5 border-b border-[#eaeaea] bg-[#f7f6f3]/85 px-5 backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
+      <header className="sticky top-0 z-40 -mx-5 border-b border-[#292929] bg-[#080808]/85 px-5 backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4">
           {view.name === "tool" ? (
             // On a tool page the way out matters more than the brand mark.
@@ -1039,10 +1050,10 @@ export default function App() {
             </button>
           ) : (
             <div className="flex min-w-0 items-baseline gap-3">
-              <span className="font-serif text-[22px] font-semibold tracking-[-0.02em] text-[#111]">
+              <span className="font-serif text-[22px] font-semibold tracking-[-0.02em] text-[#f2f2f2]">
                 MpBuddy
               </span>
-              <span className="hidden font-mono text-[11px] uppercase tracking-[0.08em] text-[#a3a099] sm:inline">
+              <span className="hidden font-mono text-[11px] uppercase tracking-[0.08em] text-[#858585] sm:inline">
                 Local media tools
               </span>
             </div>
@@ -1053,14 +1064,14 @@ export default function App() {
               className={
                 "flex shrink-0 items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.06em] " +
                 (engineNote.busy
-                  ? "border-[#ebd9a8] bg-[#fbf3db] text-[#956400]"
-                  : "border-[#cbe3cf] bg-[#edf3ec] text-[#346538]")
+                  ? "border-[#51462b] bg-[#30291b] text-[#e3c17a]"
+                  : "border-[#34503b] bg-[#1e3024] text-[#9bc8a1]")
               }
             >
               <span
                 className={
                   "size-1.5 rounded-full " +
-                  (engineNote.busy ? "animate-pulse bg-[#956400]" : "bg-[#346538]")
+                  (engineNote.busy ? "animate-pulse bg-[#e3c17a]" : "bg-[#9bc8a1]")
                 }
               />
               {engineNote.text}
@@ -1073,10 +1084,10 @@ export default function App() {
         <main className="mt-10 flex flex-col gap-10 pb-8">
           <div className="max-w-2xl">
             <p className="section-label">Private · on-device · offline-capable</p>
-            <h1 className="mt-3 font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.02em] text-[#111] sm:text-[48px]">
-              Media tools that never upload.
+            <h1 className="mt-3 font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.02em] text-[#f2f2f2] sm:text-[48px]">
+              Your media, in your hands.
             </h1>
-            <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-[#55534e]">
+            <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-[#b5b5b5]">
               Compress, trim, convert and crop with ffmpeg running in this tab. Pick a tool to
               start — your files stay on this machine.
             </p>
@@ -1099,7 +1110,7 @@ export default function App() {
               <p className="section-label px-2">Tools</p>
               {TOOL_GROUPS.map((g) => (
                 <div key={g.id}>
-                  <p className="mt-3 px-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-[#a3a099]">
+                  <p className="mt-3 px-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-[#858585]">
                     {g.title}
                   </p>
                   <ul className="mt-1 space-y-0.5">
@@ -1114,8 +1125,8 @@ export default function App() {
                             className={
                               "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-[14px] font-medium transition-colors " +
                               (current
-                                ? "border-[#111] bg-[#111] text-white"
-                                : "border-transparent text-[#55534e] hover:border-[#e5e4e0] hover:bg-white hover:text-[#111]")
+                                ? "border-[#f2f2f2] bg-[#f2f2f2] text-[#111111]"
+                                : "border-transparent text-[#b5b5b5] hover:border-[#303030] hover:bg-[#151515] hover:text-[#f2f2f2]")
                             }
                           >
                             <svg
@@ -1132,7 +1143,7 @@ export default function App() {
                             />
                             <span className="min-w-0 flex-1 truncate">{t.label}</span>
                             {t.badge === "new" && !current && (
-                              <span className="shrink-0 rounded-full border border-[#ebd9a8] bg-[#fbf3db] px-1.5 text-[10px] font-semibold uppercase text-[#956400]">
+                              <span className="shrink-0 rounded-full border border-[#51462b] bg-[#30291b] px-1.5 text-[10px] font-semibold uppercase text-[#e3c17a]">
                                 New
                               </span>
                             )}
@@ -1149,7 +1160,7 @@ export default function App() {
           <div className="flex items-start gap-3.5">
             <span
               aria-hidden="true"
-              className="grid size-11 shrink-0 place-items-center rounded-lg bg-[#111] text-white"
+              className="grid size-11 shrink-0 place-items-center rounded-lg bg-[#f2f2f2] text-[#111111]"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -1164,17 +1175,17 @@ export default function App() {
               />
             </span>
             <div className="min-w-0 pt-0.5">
-              <h1 className="font-serif text-[30px] font-medium leading-[1.15] tracking-[-0.02em] text-[#111]">
+              <h1 className="font-serif text-[30px] font-medium leading-[1.15] tracking-[-0.02em] text-[#f2f2f2]">
                 {tool.label}
               </h1>
-              <p className="mt-1 text-[14px] leading-snug text-[#787774]">{tool.hint}</p>
+              <p className="mt-1 text-[14px] leading-snug text-[#a0a0a0]">{tool.hint}</p>
             </div>
           </div>
         {picked ? (
           <div className="panel flex items-center gap-3 p-5">
             <span
               aria-hidden="true"
-              className="grid size-10 shrink-0 place-items-center rounded-md bg-[#f1f0ed] text-[#111]"
+              className="grid size-10 shrink-0 place-items-center rounded-md bg-[#222222] text-[#f2f2f2]"
             >
               {pickedKind === "audio" ? (
                 <svg
@@ -1223,12 +1234,12 @@ export default function App() {
               )}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block max-w-full truncate text-[15px] font-semibold tracking-[-0.01em] text-[#111]">
+              <span className="block max-w-full truncate text-[15px] font-semibold tracking-[-0.01em] text-[#f2f2f2]">
                 {picked.name}
               </span>
-              <span className="mt-0.5 block font-mono text-[12px] tabular-nums text-[#787774]">{fileMeta}</span>
+              <span className="mt-0.5 block font-mono text-[12px] tabular-nums text-[#a0a0a0]">{fileMeta}</span>
               {sizeWarn && (
-                <span className="mt-1 block max-w-full text-xs font-medium text-[#956400]">
+                <span className="mt-1 block max-w-full text-xs font-medium text-[#e3c17a]">
                   {sizeWarn}
                 </span>
               )}
@@ -1244,7 +1255,7 @@ export default function App() {
               type="button"
               onClick={handleRemoveFile}
               aria-label="Remove file"
-              className="grid size-9 shrink-0 place-items-center rounded-md text-[#a3a099] transition-colors hover:bg-[#fdebec] hover:text-[#9f2f2d]"
+              className="grid size-9 shrink-0 place-items-center rounded-md text-[#858585] transition-colors hover:bg-[#351c1e] hover:text-[#f09595]"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -1264,16 +1275,16 @@ export default function App() {
         ) : (
           <>
             {rejected && (
-              <p className="rounded-lg border border-[#ebd9a8] bg-[#fbf3db] px-3.5 py-2.5 text-[13px] font-medium text-[#956400]">
+              <p className="rounded-lg border border-[#51462b] bg-[#30291b] px-3.5 py-2.5 text-[13px] font-medium text-[#e3c17a]">
                 {rejected.name}: {rejected.message}
               </p>
             )}
             <button
               type="button"
-              className="group flex min-h-56 w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#d8d7d2] bg-white px-6 py-8 text-center transition-colors hover:border-[#111]"
+              className="group flex min-h-56 w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#494949] bg-[#151515] px-6 py-8 text-center transition-colors hover:border-[#f2f2f2]"
               onClick={() => fileInputRef.current?.click()}
             >
-              <span className="grid size-11 place-items-center rounded-lg bg-[#f1f0ed] text-[#111]">
+              <span className="grid size-11 place-items-center rounded-lg bg-[#222222] text-[#f2f2f2]">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="20"
@@ -1291,11 +1302,11 @@ export default function App() {
                   <path d="M20 16v2a2 2 0 0 1 -2 2H6a2 2 0 0 1 -2 -2v-2" />
                 </svg>
               </span>
-              <span className="mt-1.5 text-[16px] font-semibold tracking-[-0.01em] text-[#111]">
+              <span className="mt-1.5 text-[16px] font-semibold tracking-[-0.01em] text-[#f2f2f2]">
                 Drop {wantsImage ? "an image" : "a video or audio file"}
               </span>
-              <span className="text-[14px] text-[#787774]">or click to browse — paste works too</span>
-              <span className="mt-1 font-mono text-[12px] uppercase tracking-[0.06em] text-[#a3a099]">
+              <span className="text-[14px] text-[#a0a0a0]">or click to browse — paste works too</span>
+              <span className="mt-1 font-mono text-[12px] uppercase tracking-[0.06em] text-[#858585]">
                 {activeTool === "heic"
                   ? "HEIC · HEIF · HIF"
                   : wantsImage
@@ -1329,7 +1340,7 @@ export default function App() {
         />
 
         {batchQueue.length > 0 && (
-          <div className="rounded-lg border border-[#c4dff2] bg-[#e1f3fe] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#1f6c9f]">
+          <div className="rounded-lg border border-[#344d60] bg-[#1c2c37] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#91bfe1]">
             <div className="flex items-center gap-2">
               <span className="min-w-0 flex-1">
                 <span className="font-semibold">
@@ -1370,7 +1381,7 @@ export default function App() {
           </div>
         )}
         {activeTool === "merge" && batchQueue.length === 0 && picked && (
-          <p className="rounded-lg border border-[#c4dff2] bg-[#e1f3fe] px-3.5 py-2.5 text-[13px] leading-snug text-[#1f6c9f]">
+          <p className="rounded-lg border border-[#344d60] bg-[#1c2c37] px-3.5 py-2.5 text-[13px] leading-snug text-[#91bfe1]">
             Add more files to merge: drop them anywhere or pick again — they queue up and
             join in order.
           </p>
@@ -1514,10 +1525,10 @@ export default function App() {
                 />
               </Field>
               {opts.convert!.format === "gif" ? (
-                <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                   {GIF_MAX_SEC} seconds, no sound, 480px wide.
                   {gifTooLong && (
-                    <span className="font-semibold text-[#9f2f2d]">
+                    <span className="font-semibold text-[#f09595]">
                       {" "}
                       This clip is {fmtTime(pickedDuration!)} — only the first {GIF_MAX_SEC}s will be
                       exported.
@@ -1525,7 +1536,7 @@ export default function App() {
                   )}
                 </p>
               ) : opts.convert!.format === "mp3" ? (
-                <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                   Audio only — the picture is dropped and the file comes out at 192 kbps.
                 </p>
               ) : (
@@ -1611,7 +1622,7 @@ export default function App() {
                 hint="Keeps the area around your tap, so faces stay in shot."
               >
                 <div
-                  className="relative h-28 touch-none rounded-lg border border-[#e0dfdb] bg-[#f1f0ed]"
+                  className="relative h-28 touch-none rounded-lg border border-[#363636] bg-[#222222]"
                   onPointerDown={(e) => {
                     const el = e.currentTarget;
                     const r = el.getBoundingClientRect();
@@ -1634,7 +1645,7 @@ export default function App() {
                   }}
                 >
                   <div
-                    className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#111] bg-white"
+                    className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#f2f2f2] bg-[#151515]"
                     style={{
                       left: `${Math.max(0, Math.min(100, Number(opts.crop!.focalX ?? "50") || 50))}%`,
                       top: `${Math.max(0, Math.min(100, Number(opts.crop!.focalY ?? "50") || 50))}%`,
@@ -1642,11 +1653,11 @@ export default function App() {
                   />
                 </div>
               </Field>
-              <div className="flex items-center gap-3 rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5">
+              <div className="flex items-center gap-3 rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5">
                 <div className="grid h-12 w-12 shrink-0 place-items-center">
                   {cropPreview ? (
                     <div
-                      className="max-h-full max-w-full rounded-[4px] border-2 border-[#111] bg-[#111]/[0.06]"
+                      className="max-h-full max-w-full rounded-[4px] border-2 border-[#f2f2f2] bg-[#f2f2f2]/[0.06]"
                       style={{
                         aspectRatio: `${cropPreview.W} / ${cropPreview.H}`,
                         ...(cropPreview.W / cropPreview.H >= 1
@@ -1656,7 +1667,7 @@ export default function App() {
                     />
                   ) : (
                     <div
-                      className="rounded-[4px] border-2 border-[#111] bg-[#111]/[0.06]"
+                      className="rounded-[4px] border-2 border-[#f2f2f2] bg-[#f2f2f2]/[0.06]"
                       style={{ width: "1.75rem", height: "1.75rem" }}
                     />
                   )}
@@ -1789,7 +1800,7 @@ export default function App() {
           )}
 
           {activeTool === "merge" && (
-            <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+            <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
               Everything is normalized to 720p30 + AAC so mismatched clips join cleanly.
               Mixed-size videos get letterboxed, not stretched.
             </p>
@@ -1828,8 +1839,13 @@ export default function App() {
             </div>
           )}
 
+          {(activeTool === "fliph" || activeTool === "flipv" || activeTool === "metadata") && (
+            <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
+              {activeTool === "metadata" ? "Common file tags and chapters are removed. Visible content and information embedded in the picture or audio remain." : "The entire video will be flipped. Audio stays in place."}
+            </p>
+          )}
           {activeTool === "reverse" && (
-            <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+            <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
               The whole clip plays backwards, audio included. Long clips take a moment —
               reverse buffers the entire video before writing.
             </p>
@@ -1982,7 +1998,7 @@ export default function App() {
                 onChange={(v) => patchOpt("tosize", "maxH", v)}
                 hint="Smaller frames are cheaper to encode — a big lever on quality."
               />
-              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+              <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                 The bitrate is planned from the clip&apos;s length to land under the cap. Longer clips
                 mean lower quality per MB — that&apos;s math, not a bug.
               </p>
@@ -1990,7 +2006,7 @@ export default function App() {
           )}
 
           {activeTool === "mute" && (
-            <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+            <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
               The picture track is copied untouched and the sound is dropped — usually finishes in a
               second or two, even for big files.
             </p>
@@ -2012,7 +2028,7 @@ export default function App() {
                 />
               </Field>
               {(opts.acut!.format ?? "m4a") === "m4r" && (
-                <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+                <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                   iPhone ringtones can&apos;t be longer than 40 seconds — anything more is trimmed to fit.
                 </p>
               )}
@@ -2084,7 +2100,7 @@ export default function App() {
                 checked={(opts.denoise!.hum ?? "on") === "on"}
                 onChange={(v) => patchOpt("denoise", "hum", v ? "on" : "off")}
               />
-              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+              <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                 Steady hiss, wind and hum, the classic FFT-denoiser way — no AI, all local.
               </p>
             </div>
@@ -2103,7 +2119,7 @@ export default function App() {
                   onChange={(v) => patchOpt("isolate", "mode", v)}
                 />
               </Field>
-              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+              <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                 Honest disclaimer: classic stereo-channel math, not AI. Voices usually sit dead centre
                 of a stereo mix, instruments off to the sides — this keeps or cancels the centre. Best
                 on real stereo mixes.
@@ -2148,7 +2164,7 @@ export default function App() {
                   onChange={(v) => patchOpt("wave", "color", v)}
                 />
               </Field>
-              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+              <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                 Draws the waveform and plays the sound underneath — a normal MP4, good for podcast
                 clips and social posts.
               </p>
@@ -2169,16 +2185,16 @@ export default function App() {
                 />
               </Field>
               {opts.watermark!.mode === "logo" ? (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5">
                   {wmLogo && wmLogoUrl ? (
                     <>
                       <span className="flex min-w-0 items-center gap-2.5">
                         <img
                           src={wmLogoUrl}
                           alt="Watermark logo preview"
-                          className="h-9 w-9 shrink-0 rounded-[6px] border border-[#e5e4e0] bg-white object-contain"
+                          className="h-9 w-9 shrink-0 rounded-[6px] border border-[#303030] bg-[#151515] object-contain"
                         />
-                        <span className="min-w-0 text-[14px] font-medium leading-tight text-[#111]">
+                        <span className="min-w-0 text-[14px] font-medium leading-tight text-[#f2f2f2]">
                           {wmLogo.w}×{wmLogo.h}px, keeps its place on every run
                         </span>
                       </span>
@@ -2192,7 +2208,7 @@ export default function App() {
                     </>
                   ) : (
                     <>
-                      <span className="min-w-0 text-[14px] leading-snug text-[#55534e]">
+                      <span className="min-w-0 text-[14px] leading-snug text-[#b5b5b5]">
                         A PNG with a transparent background stamps cleanest.
                       </span>
                     </>
@@ -2277,7 +2293,7 @@ export default function App() {
                   onChange={(v) => patchOpt("heic", "quality", v)}
                 />
               )}
-              <p className="rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+              <p className="rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                 The Apple photo decoder lives inside this page — no engine download, and it works even
                 before ffmpeg has ever loaded.
               </p>
@@ -2300,7 +2316,7 @@ export default function App() {
                 hint="Models how much headroom your photo needs; faces stay centred in the print."
               >
                 <div
-                  className="relative h-32 touch-none rounded-lg border border-[#e0dfdb] bg-[#f1f0ed]"
+                  className="relative h-32 touch-none rounded-lg border border-[#363636] bg-[#222222]"
                   onPointerDown={(e) => {
                     const el = e.currentTarget;
                     const r = el.getBoundingClientRect();
@@ -2327,7 +2343,7 @@ export default function App() {
                   }}
                 >
                   <div
-                    className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 border-dashed border-[#a3a099] bg-[#111]/[0.04]"
+                    className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 border-dashed border-[#858585] bg-[#f2f2f2]/[0.04]"
                     style={{
                       left: `${Math.max(0, Math.min(100, Number(passportOpts.focalX ?? "50") || 50))}%`,
                       height: "84%",
@@ -2335,7 +2351,7 @@ export default function App() {
                     }}
                   >
                     <div
-                      className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-dashed border-[#a3a099]"
+                      className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-dashed border-[#858585]"
                       style={{
                         top: "38%",
                         width: `${Math.round((passportSize.W / passportSize.H) * 34)}px`,
@@ -2345,7 +2361,7 @@ export default function App() {
                   </div>
                 </div>
               </Field>
-              <p className="flex items-center justify-between gap-3 rounded-lg border border-[#eaeaea] bg-[#fafaf8] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#55534e]">
+              <p className="flex items-center justify-between gap-3 rounded-lg border border-[#292929] bg-[#171717] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#b5b5b5]">
                 <span>
                   Full-resolution crop rendered at {passportDpi || `${passportSize.pw} × ${passportSize.ph} px`} —
                   the size print shops ask for.
@@ -2356,18 +2372,18 @@ export default function App() {
         </section>
 
         {failure && (
-          <section className="rounded-xl border border-[#f0d3d4] bg-[#fdebec] p-5">
-            <p className="text-[15px] font-semibold tracking-[-0.01em] text-[#9f2f2d]">
+          <section className="rounded-xl border border-[#633739] bg-[#351c1e] p-5">
+            <p className="text-[15px] font-semibold tracking-[-0.01em] text-[#f09595]">
               {failure.title}
             </p>
             {failure.hint && (
-              <p className="mt-1 text-[14px] leading-snug text-[#9f2f2d]/85">{failure.hint}</p>
+              <p className="mt-1 text-[14px] leading-snug text-[#f09595]/85">{failure.hint}</p>
             )}
             <details className="mt-2">
-              <summary className="cursor-pointer text-[13px] font-medium text-[#9f2f2d]">
+              <summary className="cursor-pointer text-[13px] font-medium text-[#f09595]">
                 Technical details
               </summary>
-              <pre className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[#f0d3d4] bg-white/70 p-2 font-mono text-[12px] text-[#9f2f2d]">
+              <pre className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[#633739] bg-[#151515]/70 p-2 font-mono text-[12px] text-[#f09595]">
                 {failure.detail}
               </pre>
             </details>
@@ -2378,7 +2394,7 @@ export default function App() {
           <section ref={resultWrapRef} className="panel scroll-mt-24 p-6">
             <div className="flex items-center justify-between gap-3">
               <span className="tag tag-green">Saved</span>
-              <p className="truncate font-mono text-[12px] tabular-nums text-[#a3a099]">{resultMeta}</p>
+              <p className="truncate font-mono text-[12px] tabular-nums text-[#858585]">{resultMeta}</p>
             </div>
             {compressCompare && pickedUrl && (resultKind === "video" || resultKind === "image") ? (
               <div className="mt-3">
@@ -2394,7 +2410,7 @@ export default function App() {
                   src={resultUrl}
                   controls
                   playsInline
-                  className="mt-4 max-h-80 w-full rounded-lg border border-[#eaeaea] bg-black"
+                  className="mt-4 max-h-80 w-full rounded-lg border border-[#292929] bg-black"
                 />
               )
             )}
@@ -2403,12 +2419,12 @@ export default function App() {
               <img
                 src={resultUrl}
                 alt="Converted image preview"
-                className="mt-4 max-h-80 w-full rounded-lg border border-[#eaeaea] bg-black object-contain"
+                className="mt-4 max-h-80 w-full rounded-lg border border-[#292929] bg-black object-contain"
               />
             )}
             {frameFiles.length > 0 && (
               <div className="mt-3">
-                <p className="font-mono text-[12px] uppercase tracking-[0.06em] text-[#a3a099]">
+                <p className="font-mono text-[12px] uppercase tracking-[0.06em] text-[#858585]">
                   Extracted frames — click one to download it.
                 </p>
                 <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1">
@@ -2422,7 +2438,7 @@ export default function App() {
                       <img
                         src={URL.createObjectURL(f)}
                         alt={f.name}
-                        className="h-16 w-auto rounded-[8px] border border-[#e5e4e0] bg-black"
+                        className="h-16 w-auto rounded-[8px] border border-[#303030] bg-black"
                       />
                     </a>
                   ))}
@@ -2433,35 +2449,35 @@ export default function App() {
               <img
                 src={resultUrl}
                 alt="Converted GIF preview"
-                className="mt-4 max-h-80 w-full rounded-lg border border-[#eaeaea] bg-black object-contain"
+                className="mt-4 max-h-80 w-full rounded-lg border border-[#292929] bg-black object-contain"
               />
             )}
             {picked && (
-              <dl className="mt-4 grid grid-cols-3 gap-2 rounded-lg border border-[#eaeaea] bg-[#fafaf8] p-3">
+              <dl className="mt-4 grid grid-cols-3 gap-2 rounded-lg border border-[#292929] bg-[#171717] p-3">
                 <div>
-                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#a3a099]">
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#858585]">
                     In
                   </dt>
-                  <dd className="mt-0.5 text-[14px] font-semibold tabular-nums text-[#111]">
+                  <dd className="mt-0.5 text-[14px] font-semibold tabular-nums text-[#f2f2f2]">
                     {formatBytes(picked.size)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#a3a099]">
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#858585]">
                     Out
                   </dt>
-                  <dd className="mt-0.5 text-[14px] font-semibold tabular-nums text-[#111]">
+                  <dd className="mt-0.5 text-[14px] font-semibold tabular-nums text-[#f2f2f2]">
                     {formatBytes(resultFile.size)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#a3a099]">
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.08em] text-[#858585]">
                     Change
                   </dt>
                   <dd
                     className={
                       "text-[14px] font-semibold tabular-nums " +
-                      (change.startsWith("−") ? "text-[#346538]" : "text-[#111]")
+                      (change.startsWith("−") ? "text-[#9bc8a1]" : "text-[#f2f2f2]")
                     }
                   >
                     {change}
@@ -2499,7 +2515,7 @@ export default function App() {
             <div className="flex items-baseline justify-between gap-3">
               <p className="section-label">Run</p>
               {picked && (
-                <p className="truncate font-mono text-[12px] tabular-nums text-[#a3a099]">
+                <p className="truncate font-mono text-[12px] tabular-nums text-[#858585]">
                   {formatBytes(picked.size)}
                 </p>
               )}
@@ -2507,16 +2523,16 @@ export default function App() {
             {running ? (
               <div className="mt-3" role="status" aria-live="polite">
                 <div className="flex items-baseline justify-between gap-3">
-                  <p className="truncate text-[14px] font-semibold text-[#111]">
+                  <p className="truncate text-[14px] font-semibold text-[#f2f2f2]">
                     {runningLabel}
                   </p>
-                  <p className="shrink-0 font-mono text-[13px] tabular-nums text-[#787774]">
+                  <p className="shrink-0 font-mono text-[13px] tabular-nums text-[#a0a0a0]">
                     {Math.round(progress * 100)}%
                   </p>
                 </div>
-                <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#ecebe8]">
+                <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#343434]">
                   <div
-                    className="h-full rounded-full bg-[#111] transition-[width] duration-200"
+                    className="h-full rounded-full bg-[#f2f2f2] transition-[width] duration-200"
                     style={{ width: `${Math.round(progress * 100)}%` }}
                   />
                 </div>
@@ -2547,18 +2563,18 @@ export default function App() {
                     {shareLabel}
                   </button>
                 )}
-                <p className="font-mono text-[12px] leading-relaxed text-[#a3a099]">
+                <p className="font-mono text-[12px] leading-relaxed text-[#858585]">
                   Saved to this device only — nothing was uploaded.
                 </p>
               </div>
             ) : (
               <div className="mt-3 flex flex-col gap-2">
                 {picked && validationError ? (
-                  <p role="status" className="text-[13px] font-medium leading-snug text-[#9f2f2d]">
+                  <p role="status" className="text-[13px] font-medium leading-snug text-[#f09595]">
                     {validationError}
                   </p>
                 ) : !picked && !engineReady ? (
-                  <p className="text-[13px] leading-snug text-[#a3a099]">
+                  <p className="text-[13px] leading-snug text-[#858585]">
                     First run downloads a ~30 MB engine, then it&apos;s cached.
                   </p>
                 ) : null}
@@ -2579,16 +2595,16 @@ export default function App() {
         </>
       )}
 
-      <footer className="mt-10 border-t border-[#eaeaea] py-6">
+      <footer className="mt-10 border-t border-[#292929] py-6">
         <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-          <p className="font-mono text-[12px] uppercase tracking-[0.06em] text-[#a3a099]">
+          <p className="font-mono text-[12px] uppercase tracking-[0.06em] text-[#858585]">
             Files never leave this device
           </p>
           <a
             href="https://x.com/tanavtwt"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 text-[13px] font-medium text-[#787774] transition-colors hover:text-[#111]"
+            className="flex items-center gap-2 text-[13px] font-medium text-[#a0a0a0] transition-colors hover:text-[#f2f2f2]"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" className="size-3.5 fill-current">
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
@@ -2601,9 +2617,9 @@ export default function App() {
       {dragActive && (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-[#f7f6f3]/85 backdrop-blur-sm"
+          className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-[#080808]/85 backdrop-blur-sm"
         >
-          <p className="rounded-xl border-2 border-dashed border-[#111] bg-white px-10 py-12 text-center font-serif text-[20px] text-[#111]">
+          <p className="rounded-xl border-2 border-dashed border-[#f2f2f2] bg-[#151515] px-10 py-12 text-center font-serif text-[20px] text-[#f2f2f2]">
             Drop it anywhere to load
           </p>
         </div>

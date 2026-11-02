@@ -36,7 +36,10 @@ export type ToolId =
   | "wave"
   | "watermark"
   | "heic"
-  | "passport";
+  | "passport"
+  | "fliph"
+  | "flipv"
+  | "metadata";
 
 /** Index-page section a tool is filed under. */
 export type ToolGroupId = "share" | "cut" | "look" | "sound" | "still";
@@ -327,6 +330,34 @@ export function cropFilter(W: number, H: number, fx = 0.5, fy = 0.5): string {
 }
 
 export const TOOLS: ToolDef[] = [
+  {
+    id: "fliph", label: "Flip horizontal", group: "look", badge: "new",
+    keywords: ["mirror", "selfie", "horizontal", "left", "right"],
+    icon: '<path d="M12 3v18" /><path d="M9 6l-6 6l6 6z" /><path d="M15 6l6 6l-6 6z" />',
+    hint: "Mirror a video from left to right.", action: () => "Flip horizontally",
+    accept: "video/*,.mp4,.m4v,.mov,.mkv,.webm,.avi", outMime: () => "video/mp4",
+    outName: (n) => `${baseName(n)}-flipped-horizontal.mp4`,
+    buildArgs: (input, output) => ["-i", input, "-vf", "hflip", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output],
+  },
+  {
+    id: "flipv", label: "Flip vertical", group: "look", badge: "new",
+    keywords: ["mirror", "vertical", "upside down", "top", "bottom"],
+    icon: '<path d="M3 12h18" /><path d="M6 9l6 -6l6 6z" /><path d="M6 15l6 6l6 -6z" />',
+    hint: "Flip a video from top to bottom.", action: () => "Flip vertically",
+    accept: "video/*,.mp4,.m4v,.mov,.mkv,.webm,.avi", outMime: () => "video/mp4",
+    outName: (n) => `${baseName(n)}-flipped-vertical.mp4`,
+    buildArgs: (input, output) => ["-i", input, "-vf", "vflip", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output],
+  },
+  {
+    id: "metadata", label: "Remove metadata", group: "share", badge: "new",
+    keywords: ["privacy", "metadata", "location", "tags", "strip", "clean"],
+    icon: '<path d="M12 3l8 4v5c0 5 -3 8 -8 9c-5 -1 -8 -4 -8 -9v-5z" /><path d="M9 12l2 2l4 -4" />',
+    hint: "Remove common tags from a video before sharing.", action: () => "Remove metadata",
+    accept: "video/*,.mp4,.m4v,.mov,.mkv,.webm,.avi", outMime: () => "video/mp4",
+    outName: (n) => `${baseName(n)}-clean.mp4`,
+    buildArgs: (input, output) => ["-i", input, "-map_metadata", "-1", "-map_chapters", "-1", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output],
+  },
+
   {
     id: "compress",
     label: "Compress",

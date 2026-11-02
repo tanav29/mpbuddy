@@ -56,17 +56,17 @@ export default function PwaStatus() {
       className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4"
     >
       {isOffline && (
-        <p className="pointer-events-auto rounded-full bg-[#111] px-4 py-2 font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-white">
+        <p className="pointer-events-auto rounded-full bg-[#f2f2f2] px-4 py-2 font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-white">
           You&apos;re offline — everything still works
         </p>
       )}
       {offlineReady && !isOffline && (
-        <p className="pointer-events-auto rounded-full bg-[#111] px-4 py-2 font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-white">
+        <p className="pointer-events-auto rounded-full bg-[#f2f2f2] px-4 py-2 font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-white">
           Ready to work offline
         </p>
       )}
       {needRefresh && (
-        <p className="pointer-events-auto flex items-center gap-3 rounded-lg border border-[#eaeaea] bg-white py-2 pl-4 pr-2 text-[14px] font-medium text-[#111]">
+        <p className="pointer-events-auto flex items-center gap-3 rounded-lg border border-[#292929] bg-[#151515] py-2 pl-4 pr-2 text-[14px] font-medium text-[#f2f2f2]">
           New version available
           <button
             type="button"

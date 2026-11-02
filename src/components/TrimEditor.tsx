@@ -264,7 +264,7 @@ function CutList({
 
   if (ranges.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-[#e0dfdb] bg-[#fafaf8] px-3 py-2.5 text-[12px] leading-snug text-[#a3a099]">
+      <p className="rounded-lg border border-dashed border-[#363636] bg-[#171717] px-3 py-2.5 text-[12px] leading-snug text-[#858585]">
         No sections marked — the whole file is kept. Drag across the timeline to mark one, or
         type exact times above.
       </p>
@@ -276,7 +276,7 @@ function CutList({
       {ranges.map((r, i) => (
         <div
           key={i}
-          className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-lg border border-[#f0d3d4] bg-[#fdebec] px-2 py-2"
+          className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-lg border border-[#633739] bg-[#351c1e] px-2 py-2"
         >
           <Field label={`Section ${i + 1} from`}>
             <TextInput
@@ -305,7 +305,7 @@ function CutList({
             type="button"
             aria-label={`Remove section ${i + 1}`}
             onClick={() => onChange(ranges.filter((_, j) => j !== i))}
-            className="mb-0.5 grid size-11 shrink-0 place-items-center rounded-md border border-[#e5e4e0] bg-white text-[16px] font-medium text-[#9f2f2d]"
+            className="mb-0.5 grid size-11 shrink-0 place-items-center rounded-md border border-[#303030] bg-[#151515] text-[16px] font-medium text-[#f09595]"
           >
             ×
           </button>
@@ -675,7 +675,7 @@ function TrimTimeline({
   ) : peaks ? (
     <canvas ref={waveCanvasRef} className="h-full w-full" />
   ) : stripFailed ? (
-    <div className="h-full w-full bg-[#ecebe8]" />
+    <div className="h-full w-full bg-[#343434]" />
   ) : (
     Array.from({ length: 8 }).map((_, i) => (
       <div key={i} className="h-full flex-1 animate-pulse bg-black/[0.04]" />
@@ -693,7 +693,7 @@ function TrimTimeline({
           controls
           playsInline
           preload="metadata"
-          className="max-h-56 w-full rounded-lg border border-[#eaeaea] bg-black object-contain"
+          className="max-h-56 w-full rounded-lg border border-[#292929] bg-black object-contain"
           onTimeUpdate={handleTimeUpdate}
           onSeeked={showHead}
           onPause={() => {
@@ -740,7 +740,7 @@ function TrimTimeline({
 
       <div
         ref={trackRef}
-        className="trim-track relative h-20 overflow-hidden rounded-lg border border-[#e0dfdb] bg-[#f1f0ed]"
+        className="trim-track relative h-20 overflow-hidden rounded-lg border border-[#363636] bg-[#222222]"
         onPointerDown={handleTrackPointerDown}
         onPointerMove={handleTrackPointerMove}
         onPointerUp={endDrag}
@@ -776,7 +776,7 @@ function TrimTimeline({
                   aria-valuemax={dur}
                   aria-valuenow={r.a}
                   aria-valuetext={fmtTrim(r.a)}
-                  className="trim-handle absolute inset-y-0 left-0 w-3 rounded-r-md border border-[#d8d7d2] bg-white"
+                  className="trim-handle absolute inset-y-0 left-0 w-3 rounded-r-md border border-[#494949] bg-[#151515]"
                   onKeyDown={(ev) => {
                     const step = ev.shiftKey ? 1 : 0.1;
                     if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") {
@@ -802,7 +802,7 @@ function TrimTimeline({
                   aria-valuemax={dur}
                   aria-valuenow={r.b}
                   aria-valuetext={fmtTrim(r.b)}
-                  className="trim-handle absolute inset-y-0 right-0 w-3 rounded-l-md border border-[#d8d7d2] bg-white"
+                  className="trim-handle absolute inset-y-0 right-0 w-3 rounded-l-md border border-[#494949] bg-[#151515]"
                   onKeyDown={(ev) => {
                     const step = ev.shiftKey ? 1 : 0.1;
                     if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") {
@@ -823,7 +823,7 @@ function TrimTimeline({
                   data-i={i}
                   data-role="del"
                   aria-label={`Remove section ${i + 1}`}
-                  className="absolute left-1/2 top-1 grid size-6 -translate-x-1/2 place-items-center rounded-md border border-[#e5e4e0] bg-white text-[12px] font-bold leading-none text-[#9f2f2d]"
+                  className="absolute left-1/2 top-1 grid size-6 -translate-x-1/2 place-items-center rounded-md border border-[#303030] bg-[#151515] text-[12px] font-bold leading-none text-[#f09595]"
                 >
                   ×
                 </button>
@@ -841,13 +841,13 @@ function TrimTimeline({
               style={{ width: `${100 - hi}%` }}
             />
             <div
-              className="pointer-events-none absolute inset-y-0 rounded-[4px] border-2 border-[#111] bg-[#111]/[0.06]"
+              className="pointer-events-none absolute inset-y-0 rounded-[4px] border-2 border-[#f2f2f2] bg-[#f2f2f2]/[0.06]"
               style={{ left: `${lo}%`, width: `${Math.max(0, hi - lo)}%` }}
             />
             <button
               ref={hStartRef}
               type="button"
-              className="trim-handle absolute inset-y-0 z-10 grid w-6 place-items-center border border-[#d8d7d2] bg-white outline-none left-0 rounded-r-md"
+              className="trim-handle absolute inset-y-0 z-10 grid w-6 place-items-center border border-[#494949] bg-[#151515] outline-none left-0 rounded-r-md"
               style={{ left: `calc(${lo}% - ${(lo * 24) / 100}px)` }}
               role="slider"
               aria-label="Trim start"
@@ -877,7 +877,7 @@ function TrimTimeline({
             <button
               ref={hEndRef}
               type="button"
-              className="trim-handle absolute inset-y-0 z-10 grid w-6 place-items-center border border-[#d8d7d2] bg-white outline-none right-0 rounded-l-md"
+              className="trim-handle absolute inset-y-0 z-10 grid w-6 place-items-center border border-[#494949] bg-[#151515] outline-none right-0 rounded-l-md"
               style={{ left: `calc(${hi}% - ${(hi * 24) / 100}px)` }}
               role="slider"
               aria-label="Trim end"
@@ -939,7 +939,7 @@ function TrimTimeline({
           {shownCuts.length > 0 && (
             <button
               type="button"
-              className="w-full py-1 text-[14px] font-medium text-[#9f2f2d]"
+              className="w-full py-1 text-[14px] font-medium text-[#f09595]"
               onClick={() => onCuts("")}
             >
               Clear all sections

@@ -32,9 +32,9 @@ function ToolTile({
       type="button"
       onClick={() => onOpen(tool.id)}
       style={{ animationDelay: `${Math.min(index, 11) * 50}ms` }}
-      className="rise lift group relative flex min-h-[170px] flex-col items-start rounded-xl border border-[#eaeaea] bg-white p-6 text-left"
+      className="rise lift group relative flex min-h-[170px] flex-col items-start rounded-xl border border-[#292929] bg-[#151515] p-6 text-left"
     >
-      <span className="grid size-11 shrink-0 place-items-center rounded-md bg-[#f1f0ed] text-[#111]">
+      <span className="grid size-11 shrink-0 place-items-center rounded-md bg-[#222222] text-[#f2f2f2]">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
@@ -48,17 +48,17 @@ function ToolTile({
         />
       </span>
       <span className="mt-3 flex w-full items-center gap-2">
-        <span className="text-[17px] font-semibold leading-tight tracking-[-0.01em] text-[#111]">
+        <span className="text-[17px] font-semibold leading-tight tracking-[-0.01em] text-[#f2f2f2]">
           {tool.label}
         </span>
         {tool.badge === "new" && (
-          <span className="rounded-full border border-[#ebd9a8] bg-[#fbf3db] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[#956400]">
+          <span className="rounded-full border border-[#51462b] bg-[#30291b] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[#e3c17a]">
             New
           </span>
         )}
       </span>
-      <span className="mt-1 text-[14px] leading-snug text-[#787774]">{tool.hint}</span>
-      <span className="pointer-events-none absolute right-4 top-5 size-4 text-[#d8d7d2] transition-colors group-hover:text-[#111]">
+      <span className="mt-1 text-[14px] leading-snug text-[#a0a0a0]">{tool.hint}</span>
+      <span className="pointer-events-none absolute right-4 top-5 size-4 text-[#494949] transition-colors group-hover:text-[#f2f2f2]">
         <Chevron />
       </span>
     </button>
@@ -106,7 +106,7 @@ export default function ToolPicker({ onOpen }: { onOpen: (id: ToolId) => void })
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden="true"
-            className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[#a3a099]"
+            className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[#858585]"
           >
             <circle cx="11" cy="11" r="7" />
             <path d="M20 20l-3.6-3.6" />
@@ -128,14 +128,14 @@ export default function ToolPicker({ onOpen }: { onOpen: (id: ToolId) => void })
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
-            className="min-h-12 w-full rounded-md border border-[#e0dfdb] bg-white pl-10 pr-10 text-[15px] text-[#111] outline-none transition-colors placeholder:text-[#b4b2aa] focus:border-[#111]"
+            className="min-h-12 w-full rounded-md border border-[#363636] bg-[#151515] pl-10 pr-10 text-[15px] text-[#f2f2f2] outline-none transition-colors placeholder:text-[#707070] focus:border-[#f2f2f2]"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery("")}
               aria-label="Clear search"
-              className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-[#a3a099] transition-colors hover:bg-[#f4f3f0] hover:text-[#111]"
+              className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-[#858585] transition-colors hover:bg-[#1b1b1b] hover:text-[#f2f2f2]"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -155,18 +155,18 @@ export default function ToolPicker({ onOpen }: { onOpen: (id: ToolId) => void })
         </div>
       </form>
 
-      <p id="toolCount" className="mt-3 font-mono text-[12px] uppercase tracking-[0.06em] text-[#a3a099]">
+      <p id="toolCount" className="mt-3 font-mono text-[12px] uppercase tracking-[0.06em] text-[#858585]">
         {count === TOOLS.length
           ? `${count} tools`
           : `${count} ${count === 1 ? "tool" : "tools"} match “${trimmed}”`}
       </p>
 
       {count === 0 ? (
-        <div className="mt-3 max-w-xl rounded-xl border border-[#eaeaea] bg-white px-6 py-12 text-center">
-          <p className="font-serif text-[22px] tracking-[-0.01em] text-[#111]">
+        <div className="mt-3 max-w-xl rounded-xl border border-[#292929] bg-[#151515] px-6 py-12 text-center">
+          <p className="font-serif text-[22px] tracking-[-0.01em] text-[#f2f2f2]">
             Nothing matches “{trimmed}”
           </p>
-          <p className="mx-auto mt-2 max-w-[36ch] text-[14px] leading-snug text-[#787774]">
+          <p className="mx-auto mt-2 max-w-[36ch] text-[14px] leading-snug text-[#a0a0a0]">
             Search what you want the file to become: smaller, shorter, vertical, silent.
           </p>
           <button
